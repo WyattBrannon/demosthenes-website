@@ -24,59 +24,117 @@
     <pre id="out">—</pre>
 
     <script>
-  const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // your Pages base
-  const DEFAULT_CYCLE = 2026; // update if needed
+  // 1) Point to your Pages data base (adjust to your username if needed)
+  const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
+  const INDEX_URL = `${DATA_BASE}/indexes/members_index.tsv`;
 
-  async function fetchJSON(url) {
+  // 2) Minimal TSV parser
+  async function fetchTSV(url) {
     const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) throw new Error(`fetch failed: ${url}`);
-    return r.json();
+    if (!r.ok) throw new Error(`Failed to fetch ${url}`);
+    const text = await r.text();
+    const lines = text.trim().split(/\r?\n/);
+    const headers = lines.shift().split("\t");
+    return lines.map(line => {
+      const cols = line.split("\t");
+      const row = {};
+      headers.forEach((h, i) => (row[h] = cols[i] ?? ""));
+      return row;
+    });
   }
 
-  async function loadMember(bioguide, cycle=DEFAULT_CYCLE) {
-    // FEC totals + donors are split across files:
-    const totals = await fetchJSON(`${DATA_BASE}/fec/${bioguide}/totals_${cycle}.json`).catch(()=>[]);
-    const pac    = await fetchJSON(`${DATA_BASE}/fec/${bioguide}/by_pac_${cycle}.json`).catch(()=>[]);
-    const indiv  = await fetchJSON(`${DATA_BASE}/fec/${bioguide}/top_individuals_${cycle}.json`).catch(()=>[]);
-    return { bioguide, cycle, totals, pac, indiv };
+  // 3) Render helpers
+  function el(tag, attrs = {}, children = []) {
+    const n = document.createElement(tag);
+    Object.entries(attrs).forEach(([k, v]) => (k === "class" ? (n.className = v) : n.setAttribute(k, v)));
+    (Array.isArray(children) ? children : [children]).forEach(c => n.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
+    return n;
   }
 
-  async function renderMember(bioguide) {
+  function renderMember(card, rec) {
+    card.innerHTML = "";
+    if (!rec) { card.textContent = "Select a member…"; return; }
+
+    const name = rec.full_name || rec.bioguide_id;
+    const img = el("img", {
+      src: `${DATA_BASE}/images/${rec.bioguide_id}.jpg`,
+      alt: name,
+      style: "width:120px;height:auto;border-radius:8px;border:1px solid #ddd;"
+    });
+
+    const meta = el("div", { style: "margin-left:16px;" }, [
+      el("h3", {}, name),
+      el("p", {}, `Bioguide: ${rec.bioguide_id}`),
+      el("p", {}, `Chamber: ${rec.chamber || "?"} · State: ${rec.state_abbrev || "?"}`),
+      el("p", {}, `Party: ${rec.party_name || rec.party_code || "?"}`),
+      el("p", {}, `DW-NOMINATE (Dim1): ${rec.dw_nominate !== "" ? Number(rec.dw_nominate).toFixed(3) : "N/A"}`)
+    ]);
+
+    const row = el("div", { style: "display:flex;align-items:flex-start;gap:16px;" }, [img, meta]);
+    card.appendChild(row);
+  }
+
+  // 4) Page wiring
+  document.addEventListener("DOMContentLoaded", async () => {
     const out = document.getElementById("out");
-    out.textContent = "Loading…";
-    try {
-      const data = await loadMember(bioguide);
-      const t = Array.isArray(data.totals) ? data.totals[0] || {} : data.totals || {};
-      const html = `
-        <h3>${bioguide}</h3>
-        <p><b>Cycle:</b> ${data.cycle}</p>
-        <p><b>Receipts:</b> $${(t.receipts||0).toLocaleString()}</p>
-        <p><b>Disbursements:</b> $${(t.disbursements||0).toLocaleString()}</p>
-        <p><b>Cash on hand:</b> $${(t.cash_on_hand_end_period||t.cash_on_hand||0).toLocaleString()}</p>
-        <details open><summary><b>Top PAC donors (first 10)</b></summary>
-          <ol>${(data.pac||[]).slice(0,10).map(r=>`<li>${r.committee_name||"Unknown"} — $${(r.total||0).toLocaleString()}</li>`).join("")}</ol>
-        </details>
-        <details><summary><b>Top individual donors (first 10)</b></summary>
-          <ol>${(data.indiv||[]).slice(0,10).map(r=>`<li>${r.contributor_name||"Unknown"} — $${(r.total||0).toLocaleString()}</li>`).join("")}</ol>
-        </details>
-      `;
-      out.innerHTML = html;
-    } catch (e) {
-      out.textContent = `No data found for ${bioguide} (${e})`;
-    }
-  }
+    out.textContent = "Loading DW-NOMINATE index…";
 
-  // Demo controls
-  document.addEventListener("DOMContentLoaded", ()=>{
-    const pick = document.createElement("select");
-    pick.innerHTML = `
-      <option value="">— choose a Bioguide —</option>
-      <option>A000360</option>
-      <option>B001135</option>
-      <option>C001123</option>
-    `;
-    pick.onchange = ()=> pick.value && renderMember(pick.value);
-    document.body.insertBefore(pick, document.getElementById("out"));
+    try {
+      const data = await fetchTSV(INDEX_URL);
+
+      // Build display name from what Voteview provides (best effort)
+      data.forEach(d => {
+        // Voteview doesn't always include a single "name"; if you also publish YAML later, you can enrich this.
+        // For now, fall back to "Party State (Bioguide)" styling for clarity.
+        const label = `${(d.party_name || d.party_code || "?").toUpperCase()} ${d.state_abbrev || "??"} — ${d.bioguide_id}`;
+        d.full_name = d.full_name || d.name || label;
+      });
+
+      // Simple search + select UI
+      const search = el("input", { type: "search", placeholder: "Search by Bioguide, party, or state…", style: "padding:.5rem .75rem; width: 360px;" });
+      const picker = el("select", { style: "padding:.5rem .75rem; min-width: 360px; margin-left: 8px;" });
+      const card = el("div", { style: "margin-top: 16px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background:#fafafa;" });
+
+      function matchesFilter(d, q) {
+        if (!q) return true;
+        const s = q.toLowerCase();
+        return (
+          (d.bioguide_id || "").toLowerCase().includes(s) ||
+          (d.party_name || "").toLowerCase().includes(s) ||
+          (d.party_code || "").toLowerCase().includes(s) ||
+          (d.state_abbrev || "").toLowerCase().includes(s)
+        );
+      }
+
+      function populateSelect(q = "") {
+        const filtered = data.filter(d => matchesFilter(d, q)).sort((a, b) => (a.bioguide_id > b.bioguide_id ? 1 : -1));
+        picker.innerHTML = "";
+        picker.appendChild(el("option", { value: "" }, "— choose a member —"));
+        filtered.forEach(d => {
+          const txt = `${d.bioguide_id} · ${d.party_name || d.party_code || "?"} ${d.state_abbrev || "??"} · DW-NOM: ${d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A"}`;
+          picker.appendChild(el("option", { value: d.bioguide_id }, txt));
+        });
+      }
+
+      search.addEventListener("input", () => populateSelect(search.value));
+      picker.addEventListener("change", () => {
+        const rec = data.find(d => d.bioguide_id === picker.value);
+        renderMember(card, rec);
+      });
+
+      // Initial UI
+      out.innerHTML = "";
+      out.parentNode.insertBefore(el("div", {}, [
+        search,
+        picker,
+        card
+      ]), out);
+      populateSelect("");
+
+      card.textContent = "Select a member…";
+    } catch (e) {
+      out.textContent = `Failed to load index: ${e}`;
+    }
   });
 </script>
   </body>
