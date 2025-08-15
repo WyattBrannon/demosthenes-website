@@ -32,7 +32,7 @@
   <div class="wrap">
     <header>
       <h1>Demosthenes</h1>
-      <p class="hint">Type your address to find your two Senators and your Representative. Uses the free U.S. Census Geocoder.</p>
+      <p class="hint">Type your address to find your two Senators and your Representative (via the free U.S. Census Geocoder).</p>
     </header>
 
     <section class="card">
@@ -55,6 +55,15 @@
   </div>
 
   <script>
+  window.addEventListener('error', function(e){
+    var msg = document.getElementById('msg');
+    if (!msg) return;
+    msg.textContent = 'JS error: ' + (e.message || e.error);
+    msg.className = 'msg err';
+    msg.style.display = 'block';
+  });
+
+  window.addEventListener('DOMContentLoaded', function(){
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
     const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
     const YAML_URL  = `${BASE}/legislators-current.yaml`;
@@ -72,38 +81,38 @@
     function hideMsg(){ msg.style.display = "none"; }
 
     function el(tag, attrs = {}, children = []){ const n=document.createElement(tag); Object.entries(attrs).forEach(([k,v])=>k==="class"?(n.className=v):v!=null&&n.setAttribute(k,v)); (Array.isArray(children)?children:[children]).forEach(c=>n.appendChild(typeof c==="string"?document.createTextNode(c):c)); return n; }
-    function partyPill(p){ const up=(p||"").toUpperCase(); const cls=up.startsWith("D")?"blue":up.startsWith("R")?"red":"gray"; return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`; }
     function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
 
     const todayISO = new Date().toISOString().slice(0,10);
     let CURRENT = [];
-    (async function loadMembers(){
-      const yamlText = await (await fetch(YAML_URL,{cache:"no-store"})).text();
-      const yamlObj = jsyaml.load(yamlText);
-      CURRENT = yamlObj.map(rec=>{
-        const terms=rec?.terms||[]; if(!terms.length) return null;
-        const t=terms[terms.length-1]; const type=(t.type||"").toLowerCase(); const end=t.end||"";
-        if (!((type==="rep"||type==="sen") && (!end || end >= todayISO))) return null;
-        return {
-          bioguide: rec?.id?.bioguide,
-          name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
-          state: t.state,
-          district: type==="rep" ? (t.district ?? "") : "",
-          chamber: type==="rep" ? "house" : "senate",
-          party: t.party || (rec?.party)||"",
-          norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
-        };
-      }).filter(Boolean);
-    })();
 
-    // Map state FIPS to postal abbreviation (for Census geocoder output)
-    const FIPS_TO_ABBR = {
-      "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE","11":"DC","12":"FL",
-      "13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME",
-      "24":"MD","25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH",
-      "34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI",
-      "45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV","55":"WI","56":"WY"
-    };
+    async function loadMembers(){
+      try{
+        const yamlResp = await fetch(YAML_URL,{cache:"no-store"});
+        if (!yamlResp.ok) throw new Error('Failed to load legislators-current.yaml ('+yamlResp.status+')');
+        const yamlText = await yamlResp.text();
+        const yamlObj = jsyaml.load(yamlText);
+        CURRENT = yamlObj.map(rec=>{
+          const terms=rec?.terms||[]; if(!terms.length) return null;
+          const t=terms[terms.length-1]; const type=(t.type||"").toLowerCase(); const end=t.end||"";
+          if (!((type==="rep"||type==="sen") && (!end || end >= todayISO))) return null;
+          return {
+            bioguide: rec?.id?.bioguide,
+            name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
+            state: t.state,
+            district: type==="rep" ? (t.district ?? "") : "",
+            chamber: type==="rep" ? "house" : "senate",
+            party: t.party || (rec?.party)||"",
+            norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
+          };
+        }).filter(Boolean);
+      }catch(e){
+        showMsg('Loading members failed: ' + e.message, 'err');
+      }
+    }
+
+    // FIPS map includes DC
+    const FIPS_TO_ABBR = {"01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE","11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME","24":"MD","25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV","55":"WI","56":"WY"};
 
     async function censusGeocode(address){
       const params = new URLSearchParams({
@@ -125,7 +134,6 @@
       const stateFips = cd.STATE || match?.addressComponents?.state_fips || "";
       const state = FIPS_TO_ABBR[stateFips] || match?.addressComponents?.state || "";
       let district = cd.CD118 || cd.CD116 || cd.CENTDIST || cd.BASENAME || "";
-      // Normalize district to "AL" or "NN"
       let districtStr = "";
       if (!district || /at[-\s]?large/i.test(String(district))) {
         districtStr = "AL";
@@ -138,9 +146,10 @@
       return { state, district: districtStr };
     }
 
-    function findMembers({state, district}){
+    function findMembers(where){
+      const {state, district} = where;
       const senators = CURRENT.filter(m => m.chamber==="senate" && m.state===state);
-      const rep = CURRENT.find(m => m.chamber==="house" && m.state===state && (m.district===0 || m.district==="" ? district==="AL" : String(m.district).padStart(2,"0")===district));
+      const rep = CURRENT.find(m => m.chamber==="house" && m.state===state && ((m.district===0||m.district===""||m.district==null) ? district==="AL" : String(m.district).padStart(2,"0")===district));
       const reps = [...senators];
       if (rep) reps.push(rep);
       return reps;
@@ -152,6 +161,7 @@
         res.appendChild(el("div",{class:"card"}, "No matches found."));
         return;
       }
+      const IMG_URL = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
       for (const p of people){
         const a = el("a",{href:`member.html?bioguide=${encodeURIComponent(p.bioguide)}`,"class":"btn"},"View report →");
         const img = el("img",{class:"portrait",src:IMG_URL(p.bioguide),alt:p.name});
@@ -171,7 +181,7 @@
       }
     }
 
-    goBtn.onclick = async () => {
+    async function onGoClick(){
       hideMsg();
       try {
         res.innerHTML = "";
@@ -180,14 +190,21 @@
         const where = await censusGeocode(address);
         const people = findMembers(where);
         if (!people.length) {
-          showMsg(\`No current members found for \${where.state}-\${where.district}.\`, "warn");
+          showMsg('No current members found for '+where.state+'-'+where.district+'.', 'warn');
         }
         renderResults(people);
       } catch (e){
         showMsg(e.message, "err");
       }
-    };
-    sampleBtn.onclick = () => { addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; goBtn.click(); };
+    }
+
+    // Bind events safely
+    goBtn.addEventListener('click', function(ev){ ev.preventDefault(); onGoClick(); });
+    sampleBtn.addEventListener('click', function(ev){ ev.preventDefault(); addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; onGoClick(); });
+
+    // Kick off loading members
+    loadMembers();
+  });
   </script>
 </body>
 </html>
