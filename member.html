@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demosthenes — Member Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:24px; }
+    h1 { font-size:1.6rem; margin-bottom:8px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; }
+    .row { display:flex; gap:16px; align-items:flex-start; }
+    img.portrait { width:130px; height:auto; border-radius:10px; border:1px solid var(--border); background:#fff; object-fit:cover; }
+    .kv { margin:4px 0; }
+    .pill { display:inline-block; min-width:24px; text-align:center; padding:2px 8px; border-radius:999px; font-weight:600; margin-left:8px; }
+    .pill.red { background:#fee2e2; color:#991b1b; } .pill.blue { background:#dbeafe; color:#1e3a8a; } .pill.gray { background:#e5e7eb; color:#374151; }
+    .ideo-wrap { margin-top:8px; }
+    .ideo-scale { position: relative; height: 12px; border-radius: 999px; border: 1px solid var(--border); background: linear-gradient(90deg, #3b82f6 0%, #ef4444 100%); overflow: visible; }
+    .ideo-marker { position: absolute; top: 50%; width: 10px; height: 10px; background: #111; border-radius: 2px; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px rgba(255,255,255,.9); }
+    .ideo-labels { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); margin-top:4px; }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <a href="index.html">← Back</a>
+  <h1>Member Report</h1>
+
+  <div id="card" class="card">Loading…</div>
+
+  <script>
+    // ------- Config -------
+    const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
+    const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
+    const INDEX_URL = `${BASE}/indexes/members_index.tsv`;
+    const YAML_URL  = `${BASE}/legislators-current.yaml`;
+    const IMG_URL   = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
+
+    // ------- utils -------
+    function el(tag, attrs = {}, children = []) {
+      const n = document.createElement(tag);
+      Object.entries(attrs).forEach(([k,v]) => k==="class" ? (n.className=v) : v!=null && n.setAttribute(k,v));
+      (Array.isArray(children)?children:[children]).forEach(c => n.appendChild(typeof c==="string" ? document.createTextNode(c) : c));
+      return n;
+    }
+    async function fetchText(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("Fetch failed "+url); return r.text(); }
+    async function fetchTSV(url){
+      const text = await fetchText(url);
+      const lines = text.trim().split(/\r?\n/);
+      const headers = lines.shift().split("\t");
+      return lines.map(line => {
+        const cols = line.split("\t"); const o = {};
+        headers.forEach((h,i)=>o[h]=cols[i]??"");
+        return o;
+      });
+    }
+    async function fetchJSON(url){
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error("Fetch failed "+url);
+      return r.json();
+    }
+    function partyCodeToLetter(code){
+      const c = (code||"").toString().trim();
+      if (c === "100") return "D";
+      if (c === "200") return "R";
+      if (["328","329","331"].includes(c)) return "I";
+      return "";
+    }
+    function partyPillElem(partyName, partyCode){
+      const label = (partyName || "").trim() || partyCodeToLetter(partyCode) || "?";
+      const up = label.toUpperCase();
+      const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
+      return el("span",{class:`pill ${cls}`}, up);
+    }
+    function seatText(chamber, stateAbbrev, district){
+      const c = (chamber||"").toLowerCase();
+      if (c==="house" || c==="rep") {
+        const d = (district===0 || district==="0") ? "AL" : (district||"").toString().padStart(2,"0");
+        return `(${stateAbbrev || "??"}-${d})`;
+      } else {
+        return `(${stateAbbrev || "??"})`;
+      }
+    }
+    function dim1ToPercent(dim1){
+      if (dim1 == null || !isFinite(dim1)) return null;
+      const p = ((dim1 + 1) / 2) * 100;
+      return Math.max(0, Math.min(100, p));
+    }
+    function percentileBase(dim1, cohort){
+      if (dim1 == null || !isFinite(dim1) || !cohort.length) return null;
+      let less = 0, equal = 0;
+      for (const v of cohort) {
+        if (v < dim1) less++;
+        else if (v === dim1) equal++;
+      }
+      return ((less + 0.5*equal) / cohort.length) * 100; // % to member's left
+    }
+    function partyKeyFromRow(r){
+      const name = (r.party_name||"").toUpperCase();
+      if (name.startsWith("D")) return "D";
+      if (name.startsWith("R")) return "R";
+      const code = (r.party_code||"").toString();
+      if (code==="100") return "D";
+      if (code==="200") return "R";
+      return "I";
+    }
+
+    // ------- Maverick fetcher -------
+    const MAV_CACHE = { map: null, per: new Map() };
+    async function fetchMaverick(bioguide){
+      if (MAV_CACHE.map === null) {
+        try { MAV_CACHE.map = await fetchJSON(`${BASE}/indexes/maverick_counts.json`); }
+        catch { MAV_CACHE.map = false; }
+      }
+      if (MAV_CACHE.map && MAV_CACHE.map[bioguide]) return MAV_CACHE.map[bioguide];
+      if (MAV_CACHE.per.has(bioguide)) return MAV_CACHE.per.get(bioguide);
+      try {
+        const obj = await fetchJSON(`${BASE}/indexes/maverick/${bioguide}.json`);
+        MAV_CACHE.per.set(bioguide, obj);
+        return obj;
+      } catch {
+        MAV_CACHE.per.set(bioguide, null);
+        return null;
+      }
+    }
+
+    // ------- state -------
+    let ROWS = [];
+    let COHORT = { both: [], house: [], senate: [], party: { D: [], R: [], I: [] } };
+    let selectedCohort = 'both';
+
+    function cohortValues(key, memberParty){
+      if (key === "house") return COHORT.house;
+      if (key === "senate") return COHORT.senate;
+      if (key === "party") return COHORT.party[memberParty] || [];
+      return COHORT.both;
+    }
+
+    async function main(){
+      const params = new URLSearchParams(location.search);
+      const bioguide = params.get("bioguide");
+      const out = document.getElementById("card");
+      if (!bioguide){ out.textContent = "Missing ?bioguide=…"; return; }
+
+      // Load data
+      const yaml = jsyaml.load(await fetchText(YAML_URL));
+      const tsv = await fetchTSV(INDEX_URL);
+
+      // Current members map
+      const todayISO = new Date().toISOString().slice(0,10);
+      const currentSet = new Set();
+      const seatByBioguide = {};
+      const nameByBioguide = {};
+      for(const rec of yaml){
+        const terms = rec?.terms||[];
+        if(!terms.length) continue;
+        const lastTerm = terms[terms.length-1];
+        const type = (lastTerm.type||"").toLowerCase();
+        const end  = lastTerm.end || "";
+        const bid  = rec?.id?.bioguide;
+        if(!bid) continue;
+        if ((type==="rep" || type==="sen") && (!end || end >= todayISO)){
+          currentSet.add(bid);
+          seatByBioguide[bid] = {
+            chamber: type==="rep" ? "House" : "Senate",
+            state_abbrev: lastTerm.state,
+            district: type==="rep" ? (lastTerm.district ?? "") : ""
+          };
+          nameByBioguide[bid] = [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" ");
+        }
+      }
+
+      const byBioguide = new Map();
+      for(const r of tsv){
+        const bid = r.bioguide_id;
+        if(!currentSet.has(bid)) continue;
+        const have = byBioguide.get(bid);
+        const thisHasDim1 = r.dw_nominate !== "";
+        if(!have) byBioguide.set(bid, r);
+        else if(!have.dw_nominate && thisHasDim1) byBioguide.set(bid, r);
+      }
+      ROWS = Array.from(byBioguide.values()).map(r => {
+        const seat = seatByBioguide[r.bioguide_id] || {};
+        return {
+          ...r,
+          name: nameByBioguide[r.bioguide_id] || r.bioguide_id,
+          chamber: seat.chamber || r.chamber || "",
+          state_abbrev: seat.state_abbrev || r.state_abbrev || "",
+          district: seat.district ?? r.district ?? ""
+        };
+      });
+
+      // cohorts
+      COHORT.both = ROWS.map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null).filter(v => v!=null && isFinite(v));
+      COHORT.house = ROWS.filter(r => (r.chamber||"").toLowerCase()==="house")
+                         .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
+                         .filter(v => v!=null && isFinite(v));
+      COHORT.senate= ROWS.filter(r => (r.chamber||"").toLowerCase()==="senate")
+                         .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
+                         .filter(v => v!=null && isFinite(v));
+      COHORT.party = { D: [], R: [], I: [] };
+      function partyKeyFromRow(r){ const name=(r.party_name||"").toUpperCase(); if(name.startsWith("D")) return "D"; if(name.startsWith("R")) return "R"; const code=(r.party_code||"").toString(); if(code==="100") return "D"; if(code==="200") return "R"; return "I"; }
+      for (const r of ROWS){
+        const key = partyKeyFromRow(r);
+        const v = r.dw_nominate!=="" ? Number(r.dw_nominate) : null;
+        if (v!=null && isFinite(v)) COHORT.party[key].push(v);
+      }
+
+      const rec = ROWS.find(r=>r.bioguide_id===bioguide);
+      if (!rec){ out.textContent = "Member not found or not current."; return; }
+
+      render(out, rec);
+    }
+
+    function render(target, info){
+      target.innerHTML = "";
+      const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
+      const dim2Raw = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
+      const dim2 = dim2Raw!=="" ? Number(dim2Raw) : null;
+      const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
+      const dim2Str = (dim2!=null && isFinite(dim2)) ? dim2.toFixed(3) : "N/A";
+
+      const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
+      img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
+
+      const header = el("h3");
+      header.appendChild(document.createTextNode(info.name || info.bioguide_id));
+      header.appendChild(partyPillElem(info.party_name, info.party_code));
+      header.appendChild(document.createTextNode(` ${seatText(info.chamber, info.state_abbrev, info.district)}`));
+
+      const p = dim1ToPercent(dim1);
+      const bar = el("div",{class:"ideo-wrap"},[
+        el("div",{class:"ideo-scale"}, p==null ? [] : el("div",{class:"ideo-marker", style:`left:${p}%;`}))
+      ]);
+      const axis = el("div",{class:"ideo-labels"},[
+        el("span",{}, "−1 (liberal)"),
+        el("span",{}, "0"),
+        el("span",{}, "+1 (conservative)")
+      ]);
+
+      // Cohort dropdown
+      const partyKey = (function(){ const n=(info.party_name||"").toUpperCase(); if(n.startsWith("D")) return "D"; if(n.startsWith("R")) return "R"; const c=(info.party_code||"").toString(); if(c==="100") return "D"; if(c==="200") return "R"; return "I"; })();
+      const partyWord = partyKey==="D" ? "Democrats" : partyKey==="R" ? "Republicans" : "Independents";
+      function cohortArray(){
+        if (selectedCohort==="house") return COHORT.house;
+        if (selectedCohort==="senate") return COHORT.senate;
+        if (selectedCohort==="party") return COHORT.party[partyKey] || [];
+        return COHORT.both;
+      }
+      const basePct = (dim1!=null && isFinite(dim1)) ? percentileBase(dim1, cohortArray()) : null;
+      const shownPct = basePct==null ? null : (dim1 >= 0 ? basePct : (100 - basePct));
+
+      const dim1Line = el("div",{class:"kv"});
+      dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str}`));
+      if (shownPct != null) {
+        dim1Line.appendChild(document.createTextNode(` (to the ${dim1>=0?"right":"left"} of ${Math.round(shownPct)}% of `));
+        const sel = el("select",{class:"inline-select", title:"Choose cohort"});
+        sel.appendChild(el("option",{value:"both"},"Congress"));
+        sel.appendChild(el("option",{value:"house"},"the House"));
+        sel.appendChild(el("option",{value:"senate"},"the Senate"));
+        sel.appendChild(el("option",{value:"party"} ,partyWord));
+        sel.value = selectedCohort;
+        sel.addEventListener("change",()=>{
+          selectedCohort = sel.value;
+          render(target, info);
+        });
+        dim1Line.appendChild(sel);
+        dim1Line.appendChild(document.createTextNode(`)`));
+      }
+
+      const maverickLine = el("div",{class:"kv"}, "Maverick votes: …");
+
+      const meta = el("div",{},[
+        header,
+        el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
+        el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
+        dim1Line,
+        bar,
+        axis,
+        el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`),
+        maverickLine
+      ]);
+
+      target.appendChild(el("div",{class:"row"},[img,meta]));
+
+      // Async fill maverick
+      fetchMaverick(info.bioguide_id).then(mv=>{
+        if (mv && (mv.maverick_votes!=null) && (mv.total_votes!=null)) {
+          const pct = mv.total_votes > 0 ? Math.round((mv.maverick_votes / mv.total_votes) * 100) : 0;
+          const windowTxt = mv.window ? ` in last ${mv.window} votes` : "";
+          maverickLine.textContent = `Maverick votes: ${mv.maverick_votes} of ${mv.total_votes} (${pct}%)${windowTxt}`;
+        } else if (mv && mv.maverick_rate!=null && mv.window!=null) {
+          const pct = Math.round(mv.maverick_rate * 100);
+          maverickLine.textContent = `Maverick votes: ${pct}% in last ${mv.window} votes`;
+        } else {
+          maverickLine.textContent = "Maverick votes: N/A";
+        }
+      }).catch(()=>{
+        maverickLine.textContent = "Maverick votes: N/A";
+      });
+    }
+
+    main().catch(err=>{
+      const out = document.getElementById("card");
+      out.textContent = "Error: " + err.message;
+    });
+  </script>
+</body>
+</html>
