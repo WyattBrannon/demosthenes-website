@@ -72,7 +72,7 @@
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // change username if needed
     const todayISO = new Date().toISOString().slice(0,10);
     const override = localStorage.getItem("DEMOS_DATA_BASE");
-    const BASE = override && /^https?:\\/\\//.test(override) ? override.replace(/\\/+$/,"") : DATA_BASE;
+    const BASE = override && /^https?:\/\//.test(override) ? override.replace(/\/+$/,"") : DATA_BASE;
 
     const INDEX_URL = `${BASE}/indexes/members_index.tsv`;
     const YAML_URL  = `${BASE}/legislators-current.yaml`;
@@ -88,10 +88,10 @@
     async function fetchText(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("Fetch failed "+url); return r.text(); }
     async function fetchTSV(url){
       const text = await fetchText(url);
-      const lines = text.trim().split(/\\r?\\n/);
-      const headers = lines.shift().split("\\t");
+      const lines = text.trim().split(/\r?\n/);
+      const headers = lines.shift().split("\t");
       return lines.map(line => {
-        const cols = line.split("\\t"); const o = {};
+        const cols = line.split("\t"); const o = {};
         headers.forEach((h,i)=>o[h]=cols[i]??"");
         return o;
       });
@@ -130,7 +130,9 @@
       const p = ((dim1 + 1) / 2) * 100;
       return Math.max(0, Math.min(100, p));
     }
-    function escapeRegExp(s){ return (s||"").replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"); }
+    function escapeRegExp(s){
+      return (s||"").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // FIX: proper escaping
+    }
 
     // Percentile helpers
     function percentileBase(dim1, cohort){
@@ -194,7 +196,6 @@
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
 
-      // choose cohort locally (includes dynamic 'party')
       const cohortArray = (selectedCohort==="house") ? COHORT.house
                          : (selectedCohort==="senate") ? COHORT.senate
                          : (selectedCohort==="party") ? (COHORT.party[memberPartyKey] || [])
@@ -211,13 +212,11 @@
       const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
 
-      // header (name + party pill + seat)
       const header = el("h3");
       header.appendChild(document.createTextNode(info.name || info.bioguide_id));
       header.appendChild(partyPillElem(info.party_name, info.party_code));
       header.appendChild(document.createTextNode(` ${seatText(info.chamber, info.state_abbrev, info.district)}`));
 
-      // ideology bar
       const p = dim1ToPercent(dim1);
       const bar = el("div",{class:"ideo-wrap"},[
         el("div",{class:"ideo-scale"}, p==null ? [] : el("div",{class:"ideo-marker", style:`left:${p}%;`}))
@@ -228,7 +227,6 @@
         el("span",{}, "+1 (conservative)")
       ]);
 
-      // Dim1 line with inline cohort dropdown (with dynamic party option)
       const dim1Line = el("div",{class:"kv"});
       dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str}`));
       if (shownPct != null) {
@@ -238,16 +236,15 @@
         sel.appendChild(el("option",{value:"house"},"the House"));
         sel.appendChild(el("option",{value:"senate"},"the Senate"));
         sel.appendChild(el("option",{value:"party"} ,partyWord));
-        sel.value = selectedCohort; // keep last choice if possible
+        sel.value = selectedCohort;
         sel.addEventListener("change",()=>{
           selectedCohort = sel.value;
-          renderMemberCard(target, info); // re-render to update %
+          renderMemberCard(target, info);
         });
         dim1Line.appendChild(sel);
         dim1Line.appendChild(document.createTextNode(`)`));
       }
 
-      // Maverick line (async fetch)
       const maverickLine = el("div",{class:"kv"}, "Maverick votes: …");
 
       const meta = el("div",{},[
@@ -263,7 +260,6 @@
 
       target.appendChild(el("div",{class:"row"},[img,meta]));
 
-      // Fill maverick line when data arrives
       try {
         const mv = await fetchMaverick(info.bioguide_id);
         if (mv && (mv.maverick_votes!=null) && (mv.total_votes!=null)) {
@@ -315,23 +311,25 @@
           ? `(${d.state_abbrev||"??"})`
           : `(${d.state_abbrev||"??"}-${(d.district===0||d.district==="0")?"AL":(d.district||"").toString().padStart(2,"0")})`;
         const last = d.last_name || "";
-        const lastRe = new RegExp(`${escapeRegExp(last)}$`);
-        const firstNames = (d.name || "").replace(lastRe,'').trim();
+        // Use robust first name derivation to avoid regex pitfalls
+        let firstNames = d.name || "";
+        if (last) {
+          const idx = firstNames.lastIndexOf(last);
+          if (idx > 0) firstNames = firstNames.slice(0, idx).trim();
+        }
         const label = `${last.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
         picker.appendChild(el("option",{value:d.bioguide_id},label));
       }
       countEl.textContent = `${list.length} shown`;
     }
 
-    // ------- main -------
     (async function(){
       const out = document.getElementById("card");
       const search = document.getElementById("search");
       const picker = document.getElementById("picker");
 
-      out.textContent="Loading data…";
+      out.textContent = "Loading data…";
 
-      // 1) Current members (both chambers) from YAML
       const yamlText = await fetchText(YAML_URL);
       const yamlObj = jsyaml.load(yamlText);
 
@@ -344,7 +342,7 @@
         const terms = rec?.terms||[];
         if(!terms.length) continue;
         const lastTerm = terms[terms.length-1];
-        const type = (lastTerm.type||"").toLowerCase(); // "rep" or "sen"
+        const type = (lastTerm.type||"").toLowerCase();
         const end  = lastTerm.end || "";
         const bid  = rec?.id?.bioguide;
         if(!bid) continue;
@@ -360,7 +358,6 @@
         }
       }
 
-      // 2) DW-NOM index TSV → filter to current members; prefer rows with Dim1 present
       const tsv = await fetchTSV(INDEX_URL);
       const byBioguide = new Map();
       for(const r of tsv){
@@ -384,7 +381,6 @@
         };
       });
 
-      // 3) Build cohorts for percentile calc (incl. party buckets)
       COHORT.both = ROWS.map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null).filter(v => v!=null && isFinite(v));
       COHORT.house = ROWS.filter(r => (r.chamber||"").toLowerCase()==="house")
                          .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
@@ -392,7 +388,6 @@
       COHORT.senate= ROWS.filter(r => (r.chamber||"").toLowerCase()==="senate")
                          .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
                          .filter(v => v!=null && isFinite(v));
-      // party buckets across BOTH chambers (simple + useful)
       COHORT.party = { D: [], R: [], I: [] };
       for (const r of ROWS){
         const key = partyKeyFromRow(r);
@@ -400,7 +395,6 @@
         if (v!=null && isFinite(v)) COHORT.party[key].push(v);
       }
 
-      // 4) Wire UI
       document.getElementById("search").addEventListener("input",()=>populateDropdown(document.getElementById("search").value));
       picker.addEventListener("change",()=>{
         selectedBioguide = picker.value || null;
