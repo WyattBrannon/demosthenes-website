@@ -24,6 +24,7 @@
     <pre id="out">—</pre>
 
     <script>
+      const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // adjust if needed
       const API_BASE = localStorage.getItem("API_BASE") || "http://localhost:8000";
       document.getElementById("lookup").onclick = async () => {
         const address = document.getElementById("addr").value.trim();
