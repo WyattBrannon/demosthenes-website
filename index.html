@@ -19,14 +19,14 @@
     .result-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
     .member { display:flex; gap:12px; align-items:flex-start; }
     img.portrait { width:72px; height:96px; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:#fff; }
-    .pill { display:inline-block; min-width:22px; text-align:center; padding:1px 6px; border-radius:999px; font-weight:600; margin-left:6px; }
-    .pill.red { background:#fee2e2; color:#991b1b; } .pill.blue { background:#dbeafe; color:#1e3a8a; } .pill.gray { background:#e5e7eb; color:#374151; }
-    a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
     .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .dim { color:var(--muted); }
-    .msg { padding:8px 10px; border-radius:8px; margin-top:8px; border:1px solid var(--border); background:#fff; }
+    .msg { padding:8px 10px; border-radius:8px; margin-top:8px; border:1px solid var(--border); background:#fff; white-space:pre-wrap; }
     .msg.warn { border-color:#fed7aa; background:#fffbeb; color:var(--warn); }
-    .msg.err  { border-color:#fecaca; background:#fef2f2; color:var(--err); white-space:pre-wrap; }
+    .msg.err  { border-color:#fecaca; background:#fef2f2; color:var(--err); }
+    a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
+    .pill { display:inline-block; min-width:22px; text-align:center; padding:1px 6px; border-radius:999px; font-weight:600; margin-left:6px; }
+    .pill.red { background:#fee2e2; color:#991b1b; } .pill.blue { background:#dbeafe; color:#1e3a8a; } .pill.gray { background:#e5e7eb; color:#374151; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
@@ -45,7 +45,7 @@
       </div>
       <div class="settings" style="margin-top:8px;">
         Data source: <span class="mono" id="dataBaseLabel"></span> ·
-        Civic API key: <span id="keyState" class="mono">not set</span>
+        Civic API key in browser: <span id="keyState" class="mono">not set</span>
         <br/>
         <label>Set Civic API key: <input id="civicKey" type="text" placeholder="AIza... (stored locally)" style="min-width:300px;" /></label>
         <button id="saveKey">Save</button>
@@ -63,13 +63,11 @@
   </div>
 
   <script>
-    // ---------- Config ----------
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
     const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
     const YAML_URL  = `${BASE}/legislators-current.yaml`;
     const IMG_URL   = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
 
-    // ---------- DOM ----------
     const addrEl = document.getElementById("addr");
     const goBtn = document.getElementById("go");
     const sampleBtn = document.getElementById("useSample");
@@ -83,53 +81,20 @@
     const msg = document.getElementById("msg");
     dataBaseLabel.textContent = BASE;
 
-    function showMsg(text, kind="warn"){
-      msg.textContent = text;
-      msg.className = "msg " + kind;
-      msg.style.display = "block";
-    }
+    function showMsg(text, kind="warn"){ msg.textContent = text; msg.className = "msg " + kind; msg.style.display = "block"; }
+    function hideMsg(){ msg.style.display = "none"; }
 
-    // ---------- Helpers ----------
-    function partyPill(party){
-      const up = (party||"").toUpperCase();
-      const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
-      return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`;
-    }
-    function el(tag, attrs = {}, children = []){
-      const n = document.createElement(tag);
-      Object.entries(attrs).forEach(([k,v]) => k==="class" ? (n.className=v) : v!=null && n.setAttribute(k,v));
-      (Array.isArray(children)?children:[children]).forEach(c => n.appendChild(typeof c==="string" ? document.createTextNode(c) : c));
-      return n;
-    }
-    function lastTermCurrent(rec, todayISO){
-      const terms = rec?.terms || [];
-      if (!terms.length) return null;
-      const t = terms[terms.length-1];
-      if ((t.type==="rep" || t.type==="sen") && (!t.end || t.end >= todayISO)) return t;
-      return null;
-    }
+    function partyPill(p){ const up=(p||"").toUpperCase(); const cls=up.startsWith("D")?"blue":up.startsWith("R")?"red":"gray"; return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`; }
+    function el(tag, attrs = {}, children = []){ const n=document.createElement(tag); Object.entries(attrs).forEach(([k,v])=>k==="class"?(n.className=v):v!=null&&n.setAttribute(k,v)); (Array.isArray(children)?children:[children]).forEach(c=>n.appendChild(typeof c==="string"?document.createTextNode(c):c)); return n; }
+    function lastTermCurrent(rec, todayISO){ const terms=rec?.terms||[]; if(!terms.length) return null; const t=terms[terms.length-1]; if ((t.type==="rep"||t.type==="sen") && (!t.end || t.end>=todayISO)) return t; return null; }
     function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
 
-    // ---------- Load current members ----------
     const todayISO = new Date().toISOString().slice(0,10);
-    let CURRENT = []; // {bioguide, name, state, district, chamber, party, norm}
+    let CURRENT = [];
     (async function loadMembers(){
       const yamlText = await (await fetch(YAML_URL,{cache:"no-store"})).text();
       const yamlObj = jsyaml.load(yamlText);
-      const out = [];
-      for(const rec of yamlObj){
-        const t = lastTermCurrent(rec, todayISO);
-        if(!t) continue;
-        out.push({
-          bioguide: rec?.id?.bioguide,
-          name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
-          state: t.state,
-          district: t.type==="rep" ? (t.district ?? "") : "",
-          chamber: t.type==="rep" ? "senate" : "house" // will fix below (intentional swap to detect issues)
-        });
-      }
-      // fix swap bug (just in case): correct chamber setting
-      CURRENT = yamlObj.map(rec => {
+      CURRENT = yamlObj.map(rec=>{
         const t = lastTermCurrent(rec, todayISO);
         if(!t) return null;
         return {
@@ -144,48 +109,60 @@
       }).filter(Boolean);
     })();
 
-    // ---------- Civic API ----------
     function civicKey(){ return localStorage.getItem("GOOGLE_CIVIC_API_KEY") || ""; }
-    function setKeyUI(){
-      civicKeyEl.value = civicKey();
-      keyState.textContent = civicKey() ? "● saved" : "not set";
-    }
+    function setKeyUI(){ civicKeyEl.value=civicKey(); keyState.textContent = civicKey() ? "● saved" : "not set"; }
     setKeyUI();
     saveKeyBtn.onclick = ()=>{ localStorage.setItem("GOOGLE_CIVIC_API_KEY", civicKeyEl.value.trim()); setKeyUI(); };
     clearKeyBtn.onclick = ()=>{ localStorage.removeItem("GOOGLE_CIVIC_API_KEY"); setKeyUI(); };
+
+    function maskKeyInUrl(u){ try{ const url=new URL(u); if(url.searchParams.has("key")) url.searchParams.set("key","AIza..."); return url.toString(); }catch{ return u; }}
 
     async function civicFetch(url){
       const r = await fetch(url);
       if (r.ok) return r.json();
       let detail = "";
-      try { const j = await r.json(); detail = j.error?.message || JSON.stringify(j); } catch {}
-      const err = new Error(`Civic API error: ${r.status}${detail?` — ${detail}`:""}`);
+      try { const j = await r.json(); detail = j.error?.message || JSON.stringify(j); } catch { detail = await r.text().catch(()=> ""); }
+      const err = new Error(`Civic API error: ${r.status}${detail?` — ${detail}`:""}
+Request URL: ${maskKeyInUrl(url)}`);
       err.status = r.status; err.detail = detail;
       throw err;
     }
 
-    async function fetchCivic(address){
+    async function fetchRepresentatives(address){
       const key = civicKey();
       if (!key) throw new Error("No Civic API key set. Paste it above and click Save.");
       const params = new URLSearchParams({ address, key });
-      // Note: drop levels/roles to reduce chance of 400 due to param combos, filter client-side instead
-      const url = `https://civicinfo.googleapis.com/civicinfo/v2/representatives?${params.toString()}`;
-      return civicFetch(url);
+      // First try the modern endpoint
+      let url = `https://civicinfo.googleapis.com/civicinfo/v2/representatives?${params}`;
+      try {
+        return await civicFetch(url);
+      } catch (e) {
+        if (e.status === 404) {
+          // Retry legacy endpoint
+          url = `https://www.googleapis.com/civicinfo/v2/representatives?${params}`;
+          return await civicFetch(url);
+        }
+        throw e;
+      }
     }
 
     async function checkKey(){
       const key = civicKey();
       if (!key) { showMsg("No key saved. Paste your Google Civic Information API key and click Save.", "warn"); return; }
-      const url = `https://civicinfo.googleapis.com/civicinfo/v2/divisions?query=United%20States&key=${encodeURIComponent(key)}`;
+      const url1 = `https://civicinfo.googleapis.com/civicinfo/v2/divisions?query=United%20States&key=${encodeURIComponent(key)}`;
+      const url2 = `https://www.googleapis.com/civicinfo/v2/divisions?query=United%20States&key=${encodeURIComponent(key)}`;
       try {
-        await civicFetch(url);
-        showMsg("Key looks valid and the API is enabled for your project.", "msg");
-      } catch (e) {
-        showMsg(`Key test failed: ${e.message}
-Common fixes:
-• Ensure the API is enabled (Google Cloud Console → APIs & Services → Enable APIs & Services → Civic Information API).
-• If your key has HTTP referrer restrictions, add your Pages domain (e.g., https://<your-user>.github.io/*).
-• Or remove restrictions temporarily to test.`, "err");
+        await civicFetch(url1);
+        showMsg("Key OK with modern endpoint.", "msg");
+      } catch(e1){
+        try {
+          await civicFetch(url2);
+          showMsg("Key OK with legacy endpoint (modern endpoint failing).", "msg");
+        } catch(e2){
+          showMsg(`Key test failed:
+- Modern: ${e1.message}
+- Legacy: ${e2.message}`, "err");
+        }
       }
     }
 
@@ -220,50 +197,47 @@ Common fixes:
       }
     }
 
-    function filterFederal(googleJson){
+    function parseFederal(googleJson){
       const officials = googleJson.officials || [];
       const offices = googleJson.offices || [];
-      const results = [];
+      const out = [];
       for (const office of offices){
-        const div = parseDivision(office.divisionId||"");
         const name = (office.name||"").toLowerCase();
         const isUS = (name.includes("united states") || name.includes("u.s.") || name.includes("us "));
         const isSenLike = isUS && (name.includes("senate") || name.includes("senator"));
         const isRepLike = isUS && (name.includes("house") || name.includes("representative") || name.includes("congress"));
         const chamber = isSenLike ? "senate" : isRepLike ? "house" : "";
         if (!chamber) continue;
+        const div = parseDivision(office.divisionId||"");
         for (const idx of (office.officialIndices||[])){
           const off = officials[idx];
           if (!off) continue;
-          // match by division
+          // Match to our current list
           let m = CURRENT.find(x => x.state===div.state && x.chamber===chamber && (chamber==="senate" || String(x.district)===String(div.district||x.district)));
-          // fallback by name+state
           if (!m) {
             const norm = (off.name||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim();
             m = CURRENT.find(x => x.state===div.state && x.chamber===chamber && (x.name.toLowerCase().includes(norm) || norm.includes(x.name.toLowerCase())));
           }
-          if (m) results.push(m);
+          if (m) out.push(m);
         }
       }
-      // Deduplicate by bioguide
-      return Array.from(new Map(results.map(m=>[m.bioguide,m])).values());
+      return Array.from(new Map(out.map(m=>[m.bioguide,m])).values());
     }
 
-    // ---------- Actions ----------
     goBtn.onclick = async () => {
-      msg.style.display = "none";
+      hideMsg();
       try {
         res.innerHTML = "";
         const address = addrEl.value.trim();
         if (!address) { showMsg("Enter an address.", "warn"); return; }
-        const data = await fetchCivic(address);
-        renderResults(filterFederal(data));
+        const data = await fetchRepresentatives(address);
+        renderResults(parseFederal(data));
       } catch (e){
         showMsg(e.message, "err");
       }
     };
     sampleBtn.onclick = () => { addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; goBtn.click(); };
-    checkKeyBtn.onclick = () => { checkKey(); };
+    checkKeyBtn.onclick = () => { hideMsg(); checkKey(); };
   </script>
 </body>
 </html>
