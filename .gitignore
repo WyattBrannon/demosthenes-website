@@ -137,3 +137,9 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Custom ignores for our project
+.env
+secrets.json
+data/
+output/
