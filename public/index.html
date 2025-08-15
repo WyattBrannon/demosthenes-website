@@ -24,13 +24,60 @@
     <pre id="out">—</pre>
 
     <script>
-      const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // adjust if needed
-      const API_BASE = localStorage.getItem("API_BASE") || "http://localhost:8000";
-      document.getElementById("lookup").onclick = async () => {
-        const address = document.getElementById("addr").value.trim();
-        const res = await fetch(`${API_BASE}/whoami?address=${encodeURIComponent(address)}`);
-        document.getElementById("out").textContent = await res.text();
-      };
-    </script>
+  const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // your Pages base
+  const DEFAULT_CYCLE = 2026; // update if needed
+
+  async function fetchJSON(url) {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`fetch failed: ${url}`);
+    return r.json();
+  }
+
+  async function loadMember(bioguide, cycle=DEFAULT_CYCLE) {
+    // FEC totals + donors are split across files:
+    const totals = await fetchJSON(`${DATA_BASE}/fec/${bioguide}/totals_${cycle}.json`).catch(()=>[]);
+    const pac    = await fetchJSON(`${DATA_BASE}/fec/${bioguide}/by_pac_${cycle}.json`).catch(()=>[]);
+    const indiv  = await fetchJSON(`${DATA_BASE}/fec/${bioguide}/top_individuals_${cycle}.json`).catch(()=>[]);
+    return { bioguide, cycle, totals, pac, indiv };
+  }
+
+  async function renderMember(bioguide) {
+    const out = document.getElementById("out");
+    out.textContent = "Loading…";
+    try {
+      const data = await loadMember(bioguide);
+      const t = Array.isArray(data.totals) ? data.totals[0] || {} : data.totals || {};
+      const html = `
+        <h3>${bioguide}</h3>
+        <p><b>Cycle:</b> ${data.cycle}</p>
+        <p><b>Receipts:</b> $${(t.receipts||0).toLocaleString()}</p>
+        <p><b>Disbursements:</b> $${(t.disbursements||0).toLocaleString()}</p>
+        <p><b>Cash on hand:</b> $${(t.cash_on_hand_end_period||t.cash_on_hand||0).toLocaleString()}</p>
+        <details open><summary><b>Top PAC donors (first 10)</b></summary>
+          <ol>${(data.pac||[]).slice(0,10).map(r=>`<li>${r.committee_name||"Unknown"} — $${(r.total||0).toLocaleString()}</li>`).join("")}</ol>
+        </details>
+        <details><summary><b>Top individual donors (first 10)</b></summary>
+          <ol>${(data.indiv||[]).slice(0,10).map(r=>`<li>${r.contributor_name||"Unknown"} — $${(r.total||0).toLocaleString()}</li>`).join("")}</ol>
+        </details>
+      `;
+      out.innerHTML = html;
+    } catch (e) {
+      out.textContent = `No data found for ${bioguide} (${e})`;
+    }
+  }
+
+  // Demo controls
+  document.addEventListener("DOMContentLoaded", ()=>{
+    const pick = document.createElement("select");
+    pick.innerHTML = `
+      <option value="">— choose a Bioguide —</option>
+      <option>A000360</option>
+      <option>B001135</option>
+      <option>C001123</option>
+    `;
+    pick.onchange = ()=> pick.value && renderMember(pick.value);
+    document.body.insertBefore(pick, document.getElementById("out"));
+  });
+</script>
   </body>
 </html>
