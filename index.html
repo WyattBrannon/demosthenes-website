@@ -72,7 +72,7 @@
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // change username if needed
     const todayISO = new Date().toISOString().slice(0,10);
     const override = localStorage.getItem("DEMOS_DATA_BASE");
-    const BASE = override && /^https?:\/\//.test(override) ? override.replace(/\/+$/,"") : DATA_BASE;
+    const BASE = override && /^https?:\\/\\//.test(override) ? override.replace(/\\/+$/,"") : DATA_BASE;
 
     const INDEX_URL = `${BASE}/indexes/members_index.tsv`;
     const YAML_URL  = `${BASE}/legislators-current.yaml`;
@@ -88,10 +88,10 @@
     async function fetchText(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("Fetch failed "+url); return r.text(); }
     async function fetchTSV(url){
       const text = await fetchText(url);
-      const lines = text.trim().split(/\r?\n/);
-      const headers = lines.shift().split("\t");
+      const lines = text.trim().split(/\\r?\\n/);
+      const headers = lines.shift().split("\\t");
       return lines.map(line => {
-        const cols = line.split("\t"); const o = {};
+        const cols = line.split("\\t"); const o = {};
         headers.forEach((h,i)=>o[h]=cols[i]??"");
         return o;
       });
@@ -130,7 +130,7 @@
       const p = ((dim1 + 1) / 2) * 100;
       return Math.max(0, Math.min(100, p));
     }
-    function escapeRegExp(s){ return (s||"").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+    function escapeRegExp(s){ return (s||"").replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"); }
 
     // Percentile helpers
     function percentileBase(dim1, cohort){
@@ -142,30 +142,27 @@
       }
       return ((less + 0.5*equal) / cohort.length) * 100; // % to member's left
     }
-    function cohortLabel(key){ return key==="house" ? "the House" : key==="senate" ? "the Senate" : "Congress"; }
+    function cohortLabel(key, partyWord){
+      if (key==="house") return "the House";
+      if (key==="senate") return "the Senate";
+      if (key==="party") return partyWord || "their party";
+      return "Congress";
+    }
 
     // ------- Maverick fetcher -------
-    // Tries aggregated map first, then per-member file. Caches results.
     const MAV_CACHE = { map: null, per: new Map() };
-
     async function fetchMaverick(bioguide){
-      // Try aggregated map once
       if (MAV_CACHE.map === null) {
-        try {
-          MAV_CACHE.map = await fetchJSON(`${BASE}/indexes/maverick_counts.json`);
-        } catch (e) {
-          MAV_CACHE.map = false; // mark unavailable
-        }
+        try { MAV_CACHE.map = await fetchJSON(`${BASE}/indexes/maverick_counts.json`); }
+        catch { MAV_CACHE.map = false; }
       }
       if (MAV_CACHE.map && MAV_CACHE.map[bioguide]) return MAV_CACHE.map[bioguide];
-
-      // Try per-member
       if (MAV_CACHE.per.has(bioguide)) return MAV_CACHE.per.get(bioguide);
       try {
         const obj = await fetchJSON(`${BASE}/indexes/maverick/${bioguide}.json`);
         MAV_CACHE.per.set(bioguide, obj);
         return obj;
-      } catch (e) {
+      } catch {
         MAV_CACHE.per.set(bioguide, null);
         return null;
       }
@@ -173,26 +170,38 @@
 
     // ------- state -------
     let ROWS = []; // merged current members (both chambers)
-    let COHORT = { both: [], house: [], senate: [] };
+    let COHORT = { both: [], house: [], senate: [], party: { D: [], R: [], I: [] } };
     let selectedBioguide = null;
-    let selectedCohort = 'both'; // 'both' | 'house' | 'senate'
+    let selectedCohort = 'both'; // 'both' | 'house' | 'senate' | 'party'
 
-    function cohortValues(key){
-      if (key === "house") return COHORT.house;
-      if (key === "senate") return COHORT.senate;
-      return COHORT.both;
+    function partyKeyFromRow(r){
+      const name = (r.party_name||"").toUpperCase();
+      if (name.startsWith("D")) return "D";
+      if (name.startsWith("R")) return "R";
+      const code = (r.party_code||"").toString();
+      if (code==="100") return "D";
+      if (code==="200") return "R";
+      return "I";
     }
 
     // ------- render -------
     async function renderMemberCard(target, info){
       if(!info){ target.textContent="Select a member…"; return; }
 
+      const memberPartyKey = partyKeyFromRow(info);
+      const partyWord = memberPartyKey==="D" ? "Democrats" : memberPartyKey==="R" ? "Republicans" : "Independents";
+
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
 
-      const basePct = (dim1!=null && isFinite(dim1)) ? percentileBase(dim1, cohortValues(selectedCohort)) : null;
+      // choose cohort locally (includes dynamic 'party')
+      const cohortArray = (selectedCohort==="house") ? COHORT.house
+                         : (selectedCohort==="senate") ? COHORT.senate
+                         : (selectedCohort==="party") ? (COHORT.party[memberPartyKey] || [])
+                         : COHORT.both;
+
+      const basePct = (dim1!=null && isFinite(dim1)) ? percentileBase(dim1, cohortArray) : null;
       const shownPct = basePct==null ? null : (dim1 >= 0 ? basePct : (100 - basePct));
-      const pctText = shownPct==null ? "" : ` (to the ${dim1>=0?"right":"left"} of ${Math.round(shownPct)}% of `;
 
       const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
       const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
@@ -219,16 +228,17 @@
         el("span",{}, "+1 (conservative)")
       ]);
 
-      // Dim1 line with inline cohort dropdown
+      // Dim1 line with inline cohort dropdown (with dynamic party option)
       const dim1Line = el("div",{class:"kv"});
       dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str}`));
       if (shownPct != null) {
-        dim1Line.appendChild(document.createTextNode(pctText));
+        dim1Line.appendChild(document.createTextNode(` (to the ${dim1>=0?"right":"left"} of ${Math.round(shownPct)}% of `));
         const sel = el("select",{class:"inline-select", title:"Choose cohort"});
         sel.appendChild(el("option",{value:"both"},"Congress"));
         sel.appendChild(el("option",{value:"house"},"the House"));
         sel.appendChild(el("option",{value:"senate"},"the Senate"));
-        sel.value = selectedCohort; // set after options exist
+        sel.appendChild(el("option",{value:"party"} ,partyWord));
+        sel.value = selectedCohort; // keep last choice if possible
         sel.addEventListener("change",()=>{
           selectedCohort = sel.value;
           renderMemberCard(target, info); // re-render to update %
@@ -374,7 +384,7 @@
         };
       });
 
-      // 3) Build cohorts for percentile calc
+      // 3) Build cohorts for percentile calc (incl. party buckets)
       COHORT.both = ROWS.map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null).filter(v => v!=null && isFinite(v));
       COHORT.house = ROWS.filter(r => (r.chamber||"").toLowerCase()==="house")
                          .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
@@ -382,6 +392,13 @@
       COHORT.senate= ROWS.filter(r => (r.chamber||"").toLowerCase()==="senate")
                          .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
                          .filter(v => v!=null && isFinite(v));
+      // party buckets across BOTH chambers (simple + useful)
+      COHORT.party = { D: [], R: [], I: [] };
+      for (const r of ROWS){
+        const key = partyKeyFromRow(r);
+        const v = r.dw_nominate!=="" ? Number(r.dw_nominate) : null;
+        if (v!=null && isFinite(v)) COHORT.party[key].push(v);
+      }
 
       // 4) Wire UI
       document.getElementById("search").addEventListener("input",()=>populateDropdown(document.getElementById("search").value));
