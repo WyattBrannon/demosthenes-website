@@ -125,22 +125,19 @@
       const p = ((dim1 + 1) / 2) * 100;
       return Math.max(0, Math.min(100, p));
     }
-    function percentilePhrase(dim1, cohortValues, cohortLabel){
-      if (dim1 == null || !isFinite(dim1) || !cohortValues.length) return "";
-      let less = 0, equal = 0, greater = 0;
-      for (const v of cohortValues) {
+    function escapeRegExp(s){ return (s||"").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+    // Percentile helpers
+    function percentileBase(dim1, cohort){
+      if (dim1 == null || !isFinite(dim1) || !cohort.length) return null;
+      let less = 0, equal = 0;
+      for (const v of cohort) {
         if (v < dim1) less++;
-        else if (v > dim1) greater++;
-        else equal++;
+        else if (v === dim1) equal++;
       }
-      const n = cohortValues.length;
-      const pctRight = ((less + 0.5*equal) / n) * 100;
-      const pctLeft  = ((greater + 0.5*equal) / n) * 100;
-      const dir = dim1 >= 0 ? "right" : "left";
-      const val = dim1 >= 0 ? pctRight : pctLeft;
-      const rounded = Math.round(val);
-      return `(to the ${dir} of ${rounded}% of ${cohortLabel})`;
+      return ((less + 0.5*equal) / cohort.length) * 100; // % to member's left
     }
+    function cohortLabel(key){ return key==="house" ? "the House" : key==="senate" ? "the Senate" : "Congress"; }
 
     // ------- state -------
     let ROWS = []; // merged current members (both chambers)
@@ -153,11 +150,6 @@
       if (key === "senate") return COHORT.senate;
       return COHORT.both;
     }
-    function cohortLabel(key){
-      if (key === "house") return "the House";
-      if (key === "senate") return "the Senate";
-      return "Congress";
-    }
 
     // ------- render -------
     function renderMemberCard(target, info){
@@ -165,8 +157,10 @@
 
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
-      const pctStr = (dim1!=null && isFinite(dim1))
-        ? ` ${percentilePhrase(dim1, cohortValues(selectedCohort), cohortLabel(selectedCohort))}` : "";
+
+      const basePct = (dim1!=null && isFinite(dim1)) ? percentileBase(dim1, cohortValues(selectedCohort)) : null;
+      const shownPct = basePct==null ? null : (dim1 >= 0 ? basePct : (100 - basePct));
+      const pctText = shownPct==null ? "" : ` (to the ${dim1>=0?"right":"left"} of ${Math.round(shownPct)}% of `;
 
       const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
       const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
@@ -193,25 +187,20 @@
         el("span",{}, "+1 (conservative)")
       ]);
 
-      // inline cohort dropdown inside the Dim1 line
+      // Dim1 line with inline cohort dropdown
       const dim1Line = el("div",{class:"kv"});
-      dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str} `));
-      if (dim1!=null && isFinite(dim1)) {
-        dim1Line.appendChild(document.createTextNode(`(`));
-        dim1Line.appendChild(document.createTextNode(dim1 >= 0 ? "to the right of " : "to the left of "));
+      dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str}`));
+      if (shownPct != null) {
+        dim1Line.appendChild(document.createTextNode(pctText));
         const sel = el("select",{class:"inline-select", title:"Choose cohort"});
-        sel.appendChild(el("option",{value:"both", ...(selectedCohort==='both'?{selected:''}:{})},"Congress"));
-        sel.appendChild(el("option",{value:"house", ...(selectedCohort==='house'?{selected:''}:{})},"the House"));
-        sel.appendChild(el("option",{value:"senate", ...(selectedCohort==='senate'?{selected:''}:{})},"the Senate"));
+        sel.appendChild(el("option",{value:"both"},"Congress"));
+        sel.appendChild(el("option",{value:"house"},"the House"));
+        sel.appendChild(el("option",{value:"senate"},"the Senate"));
+        sel.value = selectedCohort; // set after options exist
         sel.addEventListener("change",()=>{
           selectedCohort = sel.value;
-          // re-render to update the percent text
-          renderMemberCard(target, info);
+          renderMemberCard(target, info); // re-render to update %
         });
-        dim1Line.appendChild(el("span",{}, `${Math.round((dim1 >= 0
-          ? ((cohortValues(selectedCohort).filter(v=>v<dim1).length + 0.5*cohortValues(selectedCohort).filter(v=>v===dim1).length) / cohortValues(selectedCohort).length)*100)
-          : ((cohortValues(selectedCohort).filter(v=>v>dim1).length + 0.5*cohortValues(selectedCohort).filter(v=>v===dim1).length) / cohortValues(selectedCohort).length)*100)
-        )}% of `)));
         dim1Line.appendChild(sel);
         dim1Line.appendChild(document.createTextNode(`)`));
       }
@@ -262,8 +251,10 @@
         const seat = (d.chamber.toLowerCase()==="senate")
           ? `(${d.state_abbrev||"??"})`
           : `(${d.state_abbrev||"??"}-${(d.district===0||d.district==="0")?"AL":(d.district||"").toString().padStart(2,"0")})`;
-        const firstNames = d.name.replace(new RegExp(d.last_name+'$'),'').trim();
-        const label = `${d.last_name.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
+        const last = d.last_name || "";
+        const lastRe = new RegExp(`${escapeRegExp(last)}$`);
+        const firstNames = (d.name || "").replace(lastRe,'').trim();
+        const label = `${last.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
         picker.appendChild(el("option",{value:d.bioguide_id},label));
       }
       countEl.textContent = `${list.length} shown`;
@@ -277,7 +268,7 @@
 
       out.textContent="Loading data…";
 
-      // 1) Current members from YAML (both chambers)
+      // 1) Current members (both chambers) from YAML
       const yamlText = await fetchText(YAML_URL);
       const yamlObj = jsyaml.load(yamlText);
 
@@ -350,6 +341,7 @@
       populateDropdown("");
       out.textContent="Select a member…";
     })().catch(err=>{
+      console.error(err);
       document.getElementById("card").textContent = `Failed to load: ${err}`;
     });
   </script>
