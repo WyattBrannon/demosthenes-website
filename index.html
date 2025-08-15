@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Demosthenes — Members & DW‑NOMINATE</title>
+  <title>Demosthenes — Members & DW-NOMINATE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; }
@@ -22,14 +22,13 @@
     .pill.gray { background:#e5e7eb; }
     .dim { color:var(--muted); }
     .legend { margin-top:12px; color:var(--muted); font-size:.95rem; line-height:1.35; }
-    /* ideology bar */
     .ideo-wrap { margin-top:8px; }
     .ideo-scale {
       position: relative;
       height: 12px;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: linear-gradient(90deg, #3b82f6 0%, #ef4444 100%); /* blue → red */
+      background: linear-gradient(90deg, #3b82f6 0%, #ef4444 100%);
       overflow: visible;
     }
     .ideo-marker {
@@ -45,7 +44,7 @@
 </head>
 <body>
   <h1>Demosthenes</h1>
-  <p class="hint">Current <b>House & Senate</b> members with DW‑NOMINATE scores (Dim1 & Dim2).</p>
+  <p class="hint">Current <b>House & Senate</b> members with DW-NOMINATE scores (Dim1 & Dim2).</p>
 
   <div class="controls">
     <input id="search" type="search" placeholder="Search by name, bioguide, party, state…" />
@@ -64,7 +63,7 @@
   </div>
 
   <div class="footer">
-    Data: Voteview + congress‑legislators · Photos: unitedstates/images · Served from <span class="mono">demosthenes-data</span>.
+    Data: Voteview + congress-legislators · Photos: unitedstates/images · Served from <span class="mono">demosthenes-data</span>.
   </div>
 
   <script>
@@ -120,19 +119,40 @@
         return `(${stateAbbrev || "??"})`;
       }
     }
-    // map Dim1 in [-1,1] → 0..100% (clamp just in case)
     function dim1ToPercent(dim1){
       if (dim1 == null || !isFinite(dim1)) return null;
       const p = ((dim1 + 1) / 2) * 100;
       return Math.max(0, Math.min(100, p));
     }
 
+    // Percentile phrase: compares to all current members with Dim1
+    function percentilePhrase(dim1, cohortValues){
+      if (dim1 == null || !isFinite(dim1) || !cohortValues.length) return "";
+      let less = 0, equal = 0, greater = 0;
+      for (const v of cohortValues) {
+        if (v < dim1) less++;
+        else if (v > dim1) greater++;
+        else equal++;
+      }
+      const n = cohortValues.length;
+      // percentile with ties split
+      const pctRight = ((less + 0.5*equal) / n) * 100;     // % to the member's left → member is to the right of this %
+      const pctLeft  = ((greater + 0.5*equal) / n) * 100;   // % to the member's right → member is to the left of this %
+      const dir = dim1 >= 0 ? "right" : "left";
+      const val = dim1 >= 0 ? pctRight : pctLeft;
+      const rounded = Math.round(val);
+      return `(to the ${dir} of ${rounded}% of Congress)`;
+    }
+
     // ------- render -------
+    let COHORT_DIM1 = []; // filled after data load
+
     function renderMemberCard(target, info){
       if(!info){ target.textContent="Select a member…"; return; }
 
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
+      const pctStr = (dim1!=null && isFinite(dim1)) ? ` ${percentilePhrase(dim1, COHORT_DIM1)}` : "";
 
       const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
       const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
@@ -142,7 +162,6 @@
       const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
 
-      // ideology bar with marker
       const p = dim1ToPercent(dim1);
       const bar = el("div",{class:"ideo-wrap"},[
         el("div",{class:"ideo-scale"}, p==null ? [] : el("div",{class:"ideo-marker", style:`left:${p}%;`}))
@@ -157,10 +176,10 @@
         el("h3",{},`${info.name||info.bioguide_id} ${partyBadge(info.party_name, info.party_code)} ${seatText(info.chamber, info.state_abbrev, info.district)}`),
         el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
         el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
-        el("div",{class:"kv"} ,`DW‑NOMINATE Dim1: ${dim1Str}`),
+        el("div",{class:"kv"} ,`DW-NOMINATE Dim1: ${dim1Str} ${pctStr}`),
         bar,
         axis,
-        el("div",{class:"kv"} ,`DW‑NOMINATE Dim2: ${dim2Str}`)
+        el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`)
       ]);
 
       target.appendChild(el("div",{class:"row"},[img,meta]));
@@ -204,7 +223,7 @@
         }
       }
 
-      // 2) DW‑NOM index TSV → filter to current members; prefer rows with Dim1 present
+      // 2) DW-NOM index TSV → filter to current members; prefer rows with Dim1 present
       const tsv = await fetchTSV(INDEX_URL);
       const byBioguide = new Map();
       for(const r of tsv){
@@ -227,6 +246,11 @@
           district: seat.district ?? r.district ?? ""
         };
       });
+
+      // Build cohort of Dim1 values for percentile calc (exclude missing)
+      COHORT_DIM1 = rows
+        .map(r => (r.dw_nominate!=="" ? Number(r.dw_nominate) : null))
+        .filter(v => v!=null && isFinite(v));
 
       // 3) UI: search + dropdown (sorted by LAST name)
       function matches(d,q){
