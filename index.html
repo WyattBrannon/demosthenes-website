@@ -11,8 +11,7 @@
     p.hint { color:var(--muted); margin-top:0; }
     .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 16px 0 8px; }
     input[type="search"], select { padding:.55rem .75rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:260px; }
-    .cohort { display:flex; gap:8px; align-items:center; font-size:.95rem; color:var(--muted); margin: 4px 0 12px; }
-    .cohort label { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+    .inline-select { padding:0 .25rem; font-size:.95rem; border:1px solid var(--border); border-radius:6px; background:#fff; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; }
     .row { display:flex; gap:16px; align-items:flex-start; }
     img.portrait { width:130px; height:auto; border-radius:10px; border:1px solid var(--border); background:#fff; object-fit:cover; }
@@ -54,13 +53,6 @@
       <option value="">— choose a member —</option>
     </select>
     <span id="count" class="dim"></span>
-  </div>
-
-  <div class="cohort" id="cohort-controls" role="group" aria-label="Percentile cohort">
-    <span class="dim">Percentile cohort:</span>
-    <label><input type="radio" name="cohort" value="both" checked /> Both chambers</label>
-    <label><input type="radio" name="cohort" value="house" /> House</label>
-    <label><input type="radio" name="cohort" value="senate" /> Senate</label>
   </div>
 
   <div id="card" class="card">Select a member…</div>
@@ -133,7 +125,7 @@
       const p = ((dim1 + 1) / 2) * 100;
       return Math.max(0, Math.min(100, p));
     }
-    function percentilePhrase(dim1, cohortValues){
+    function percentilePhrase(dim1, cohortValues, cohortLabel){
       if (dim1 == null || !isFinite(dim1) || !cohortValues.length) return "";
       let less = 0, equal = 0, greater = 0;
       for (const v of cohortValues) {
@@ -142,24 +134,29 @@
         else equal++;
       }
       const n = cohortValues.length;
-      const pctRight = ((less + 0.5*equal) / n) * 100;   // % to the left of member
-      const pctLeft  = ((greater + 0.5*equal) / n) * 100; // % to the right of member
+      const pctRight = ((less + 0.5*equal) / n) * 100;
+      const pctLeft  = ((greater + 0.5*equal) / n) * 100;
       const dir = dim1 >= 0 ? "right" : "left";
       const val = dim1 >= 0 ? pctRight : pctLeft;
       const rounded = Math.round(val);
-      return `(to the ${dir} of ${rounded}% of Congress)`;
+      return `(to the ${dir} of ${rounded}% of ${cohortLabel})`;
     }
 
     // ------- state -------
     let ROWS = []; // merged current members (both chambers)
     let COHORT = { both: [], house: [], senate: [] };
     let selectedBioguide = null;
+    let selectedCohort = 'both'; // 'both' | 'house' | 'senate'
 
-    function currentCohortValues(){
-      const v = document.querySelector('input[name="cohort"]:checked')?.value || "both";
-      if (v === "house") return COHORT.house;
-      if (v === "senate") return COHORT.senate;
+    function cohortValues(key){
+      if (key === "house") return COHORT.house;
+      if (key === "senate") return COHORT.senate;
       return COHORT.both;
+    }
+    function cohortLabel(key){
+      if (key === "house") return "the House";
+      if (key === "senate") return "the Senate";
+      return "Congress";
     }
 
     // ------- render -------
@@ -168,7 +165,8 @@
 
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
-      const pctStr = (dim1!=null && isFinite(dim1)) ? ` ${percentilePhrase(dim1, currentCohortValues())}` : "";
+      const pctStr = (dim1!=null && isFinite(dim1))
+        ? ` ${percentilePhrase(dim1, cohortValues(selectedCohort), cohortLabel(selectedCohort))}` : "";
 
       const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
       const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
@@ -178,11 +176,13 @@
       const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
 
+      // header (name + party pill + seat)
       const header = el("h3");
       header.appendChild(document.createTextNode(info.name || info.bioguide_id));
       header.appendChild(partyPillElem(info.party_name, info.party_code));
       header.appendChild(document.createTextNode(` ${seatText(info.chamber, info.state_abbrev, info.district)}`));
 
+      // ideology bar
       const p = dim1ToPercent(dim1);
       const bar = el("div",{class:"ideo-wrap"},[
         el("div",{class:"ideo-scale"}, p==null ? [] : el("div",{class:"ideo-marker", style:`left:${p}%;`}))
@@ -193,11 +193,34 @@
         el("span",{}, "+1 (conservative)")
       ]);
 
+      // inline cohort dropdown inside the Dim1 line
+      const dim1Line = el("div",{class:"kv"});
+      dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str} `));
+      if (dim1!=null && isFinite(dim1)) {
+        dim1Line.appendChild(document.createTextNode(`(`));
+        dim1Line.appendChild(document.createTextNode(dim1 >= 0 ? "to the right of " : "to the left of "));
+        const sel = el("select",{class:"inline-select", title:"Choose cohort"});
+        sel.appendChild(el("option",{value:"both", ...(selectedCohort==='both'?{selected:''}:{})},"Congress"));
+        sel.appendChild(el("option",{value:"house", ...(selectedCohort==='house'?{selected:''}:{})},"the House"));
+        sel.appendChild(el("option",{value:"senate", ...(selectedCohort==='senate'?{selected:''}:{})},"the Senate"));
+        sel.addEventListener("change",()=>{
+          selectedCohort = sel.value;
+          // re-render to update the percent text
+          renderMemberCard(target, info);
+        });
+        dim1Line.appendChild(el("span",{}, `${Math.round((dim1 >= 0
+          ? ((cohortValues(selectedCohort).filter(v=>v<dim1).length + 0.5*cohortValues(selectedCohort).filter(v=>v===dim1).length) / cohortValues(selectedCohort).length)*100)
+          : ((cohortValues(selectedCohort).filter(v=>v>dim1).length + 0.5*cohortValues(selectedCohort).filter(v=>v===dim1).length) / cohortValues(selectedCohort).length)*100)
+        )}% of `)));
+        dim1Line.appendChild(sel);
+        dim1Line.appendChild(document.createTextNode(`)`));
+      }
+
       const meta = el("div",{},[
         header,
         el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
         el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
-        el("div",{class:"kv"} ,`DW-NOMINATE Dim1: ${dim1Str} ${pctStr}`),
+        dim1Line,
         bar,
         axis,
         el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`)
@@ -320,12 +343,6 @@
       document.getElementById("search").addEventListener("input",()=>populateDropdown(document.getElementById("search").value));
       picker.addEventListener("change",()=>{
         selectedBioguide = picker.value || null;
-        const rec = ROWS.find(r=>r.bioguide_id===selectedBioguide);
-        renderMemberCard(out, rec);
-      });
-      // cohort toggle → recompute percentile display for the currently selected member
-      document.getElementById("cohort-controls").addEventListener("change", ()=>{
-        if(!selectedBioguide) return;
         const rec = ROWS.find(r=>r.bioguide_id===selectedBioguide);
         renderMemberCard(out, rec);
       });
