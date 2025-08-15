@@ -19,14 +19,12 @@
     .result-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
     .member { display:flex; gap:12px; align-items:flex-start; }
     img.portrait { width:72px; height:96px; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:#fff; }
+    a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
     .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .dim { color:var(--muted); }
     .msg { padding:8px 10px; border-radius:8px; margin-top:8px; border:1px solid var(--border); background:#fff; white-space:pre-wrap; }
     .msg.warn { border-color:#fed7aa; background:#fffbeb; color:var(--warn); }
     .msg.err  { border-color:#fecaca; background:#fef2f2; color:var(--err); }
-    a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
-    .pill { display:inline-block; min-width:22px; text-align:center; padding:1px 6px; border-radius:999px; font-weight:600; margin-left:6px; }
-    .pill.red { background:#fee2e2; color:#991b1b; } .pill.blue { background:#dbeafe; color:#1e3a8a; } .pill.gray { background:#e5e7eb; color:#374151; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
@@ -34,7 +32,7 @@
   <div class="wrap">
     <header>
       <h1>Demosthenes</h1>
-      <p class="hint">Type your address to find your two Senators and your Representative. Then view detailed reports.</p>
+      <p class="hint">Type your address to find your two Senators and your Representative. Uses the free U.S. Census Geocoder.</p>
     </header>
 
     <section class="card">
@@ -44,13 +42,7 @@
         <button id="useSample">Try sample</button>
       </div>
       <div class="settings" style="margin-top:8px;">
-        Data source: <span class="mono" id="dataBaseLabel"></span> ·
-        Civic API key in browser: <span id="keyState" class="mono">not set</span>
-        <br/>
-        <label>Set Civic API key: <input id="civicKey" type="text" placeholder="AIza... (stored locally)" style="min-width:300px;" /></label>
-        <button id="saveKey">Save</button>
-        <button id="clearKey">Clear</button>
-        <button id="checkKey">Check API key</button>
+        Data source: <span class="mono" id="dataBaseLabel"></span>
         <div id="msg" class="msg warn" style="display:none;"></div>
       </div>
     </section>
@@ -58,7 +50,7 @@
     <section id="results" class="result-grid"></section>
 
     <footer class="dim">
-      Data: Voteview + congress-legislators · Address lookup: Google Civic Information API.
+      Data: Voteview + congress-legislators · Address lookup: U.S. Census Geocoder.
     </footer>
   </div>
 
@@ -72,11 +64,6 @@
     const goBtn = document.getElementById("go");
     const sampleBtn = document.getElementById("useSample");
     const res = document.getElementById("results");
-    const civicKeyEl = document.getElementById("civicKey");
-    const saveKeyBtn = document.getElementById("saveKey");
-    const clearKeyBtn = document.getElementById("clearKey");
-    const checkKeyBtn = document.getElementById("checkKey");
-    const keyState = document.getElementById("keyState");
     const dataBaseLabel = document.getElementById("dataBaseLabel");
     const msg = document.getElementById("msg");
     dataBaseLabel.textContent = BASE;
@@ -84,9 +71,8 @@
     function showMsg(text, kind="warn"){ msg.textContent = text; msg.className = "msg " + kind; msg.style.display = "block"; }
     function hideMsg(){ msg.style.display = "none"; }
 
-    function partyPill(p){ const up=(p||"").toUpperCase(); const cls=up.startsWith("D")?"blue":up.startsWith("R")?"red":"gray"; return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`; }
     function el(tag, attrs = {}, children = []){ const n=document.createElement(tag); Object.entries(attrs).forEach(([k,v])=>k==="class"?(n.className=v):v!=null&&n.setAttribute(k,v)); (Array.isArray(children)?children:[children]).forEach(c=>n.appendChild(typeof c==="string"?document.createTextNode(c):c)); return n; }
-    function lastTermCurrent(rec, todayISO){ const terms=rec?.terms||[]; if(!terms.length) return null; const t=terms[terms.length-1]; if ((t.type==="rep"||t.type==="sen") && (!t.end || t.end>=todayISO)) return t; return null; }
+    function partyPill(p){ const up=(p||"").toUpperCase(); const cls=up.startsWith("D")?"blue":up.startsWith("R")?"red":"gray"; return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`; }
     function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
 
     const todayISO = new Date().toISOString().slice(0,10);
@@ -95,81 +81,69 @@
       const yamlText = await (await fetch(YAML_URL,{cache:"no-store"})).text();
       const yamlObj = jsyaml.load(yamlText);
       CURRENT = yamlObj.map(rec=>{
-        const t = lastTermCurrent(rec, todayISO);
-        if(!t) return null;
+        const terms=rec?.terms||[]; if(!terms.length) return null;
+        const t=terms[terms.length-1]; const type=(t.type||"").toLowerCase(); const end=t.end||"";
+        if (!((type==="rep"||type==="sen") && (!end || end >= todayISO))) return null;
         return {
           bioguide: rec?.id?.bioguide,
           name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
           state: t.state,
-          district: t.type==="rep" ? (t.district ?? "") : "",
-          chamber: t.type==="rep" ? "house" : "senate",
+          district: type==="rep" ? (t.district ?? "") : "",
+          chamber: type==="rep" ? "house" : "senate",
           party: t.party || (rec?.party)||"",
           norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
         };
       }).filter(Boolean);
     })();
 
-    function civicKey(){ return localStorage.getItem("GOOGLE_CIVIC_API_KEY") || ""; }
-    function setKeyUI(){ civicKeyEl.value=civicKey(); keyState.textContent = civicKey() ? "● saved" : "not set"; }
-    setKeyUI();
-    saveKeyBtn.onclick = ()=>{ localStorage.setItem("GOOGLE_CIVIC_API_KEY", civicKeyEl.value.trim()); setKeyUI(); };
-    clearKeyBtn.onclick = ()=>{ localStorage.removeItem("GOOGLE_CIVIC_API_KEY"); setKeyUI(); };
+    // Map state FIPS to postal abbreviation (for Census geocoder output)
+    const FIPS_TO_ABBR = {
+      "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE","11":"DC","12":"FL",
+      "13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME",
+      "24":"MD","25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH",
+      "34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI",
+      "45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV","55":"WI","56":"WY"
+    };
 
-    function maskKeyInUrl(u){ try{ const url=new URL(u); if(url.searchParams.has("key")) url.searchParams.set("key","AIza..."); return url.toString(); }catch{ return u; }}
-
-    async function civicFetch(url){
+    async function censusGeocode(address){
+      const params = new URLSearchParams({
+        address,
+        benchmark: "Public_AR_Census2020",
+        vintage: "Current_Census2020",
+        layers: "Congressional Districts",
+        format: "json"
+      });
+      const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?${params.toString()}`;
       const r = await fetch(url);
-      if (r.ok) return r.json();
-      let detail = "";
-      try { const j = await r.json(); detail = j.error?.message || JSON.stringify(j); } catch { detail = await r.text().catch(()=> ""); }
-      const err = new Error(`Civic API error: ${r.status}${detail?` — ${detail}`:""}
-Request URL: ${maskKeyInUrl(url)}`);
-      err.status = r.status; err.detail = detail;
-      throw err;
-    }
-
-    async function fetchRepresentatives(address){
-      const key = civicKey();
-      if (!key) throw new Error("No Civic API key set. Paste it above and click Save.");
-      const params = new URLSearchParams({ address, key });
-      // First try the modern endpoint
-      let url = `https://civicinfo.googleapis.com/civicinfo/v2/representatives?${params}`;
-      try {
-        return await civicFetch(url);
-      } catch (e) {
-        if (e.status === 404) {
-          // Retry legacy endpoint
-          url = `https://www.googleapis.com/civicinfo/v2/representatives?${params}`;
-          return await civicFetch(url);
-        }
-        throw e;
+      if (!r.ok) throw new Error("Census Geocoder HTTP "+r.status);
+      const j = await r.json();
+      const match = j?.result?.addressMatches?.[0];
+      if (!match) throw new Error("No address match found.");
+      const geogs = match?.geographies || {};
+      const cdList = geogs["Congressional Districts"] || geogs["118th Congressional Districts"] || geogs["116th Congressional Districts"] || [];
+      const cd = cdList[0] || {};
+      const stateFips = cd.STATE || match?.addressComponents?.state_fips || "";
+      const state = FIPS_TO_ABBR[stateFips] || match?.addressComponents?.state || "";
+      let district = cd.CD118 || cd.CD116 || cd.CENTDIST || cd.BASENAME || "";
+      // Normalize district to "AL" or "NN"
+      let districtStr = "";
+      if (!district || /at[-\s]?large/i.test(String(district))) {
+        districtStr = "AL";
+      } else if (/^\d+$/.test(String(district))) {
+        const n = parseInt(district, 10);
+        districtStr = n===0 ? "AL" : String(n).padStart(2,"0");
+      } else {
+        districtStr = "AL";
       }
+      return { state, district: districtStr };
     }
 
-    async function checkKey(){
-      const key = civicKey();
-      if (!key) { showMsg("No key saved. Paste your Google Civic Information API key and click Save.", "warn"); return; }
-      const url1 = `https://civicinfo.googleapis.com/civicinfo/v2/divisions?query=United%20States&key=${encodeURIComponent(key)}`;
-      const url2 = `https://www.googleapis.com/civicinfo/v2/divisions?query=United%20States&key=${encodeURIComponent(key)}`;
-      try {
-        await civicFetch(url1);
-        showMsg("Key OK with modern endpoint.", "msg");
-      } catch(e1){
-        try {
-          await civicFetch(url2);
-          showMsg("Key OK with legacy endpoint (modern endpoint failing).", "msg");
-        } catch(e2){
-          showMsg(`Key test failed:
-- Modern: ${e1.message}
-- Legacy: ${e2.message}`, "err");
-        }
-      }
-    }
-
-    function parseDivision(divId){
-      const mState = divId.match(/state:([a-z]{2})/i);
-      const mCd = divId.match(/cd:(\d+)/i);
-      return { state: mState ? mState[1].toUpperCase() : "", district: mCd ? mCd[1] : "" };
+    function findMembers({state, district}){
+      const senators = CURRENT.filter(m => m.chamber==="senate" && m.state===state);
+      const rep = CURRENT.find(m => m.chamber==="house" && m.state===state && (m.district===0 || m.district==="" ? district==="AL" : String(m.district).padStart(2,"0")===district));
+      const reps = [...senators];
+      if (rep) reps.push(rep);
+      return reps;
     }
 
     function renderResults(people){
@@ -182,7 +156,7 @@ Request URL: ${maskKeyInUrl(url)}`);
         const a = el("a",{href:`member.html?bioguide=${encodeURIComponent(p.bioguide)}`,"class":"btn"},"View report →");
         const img = el("img",{class:"portrait",src:IMG_URL(p.bioguide),alt:p.name});
         img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
-        const seat = p.chamber==="senate" ? `(${p.state})` : `(${p.state}-${p.district?String(p.district).padStart(2,"0"):"AL"})`;
+        const seat = p.chamber==="senate" ? `(${p.state})` : `(${p.state}-${(p.district===0||p.district===""||p.district===null)?"AL":String(p.district).padStart(2,"0")})`;
         const card = el("div",{class:"card"},[
           el("div",{class:"member"},[
             img,
@@ -197,47 +171,23 @@ Request URL: ${maskKeyInUrl(url)}`);
       }
     }
 
-    function parseFederal(googleJson){
-      const officials = googleJson.officials || [];
-      const offices = googleJson.offices || [];
-      const out = [];
-      for (const office of offices){
-        const name = (office.name||"").toLowerCase();
-        const isUS = (name.includes("united states") || name.includes("u.s.") || name.includes("us "));
-        const isSenLike = isUS && (name.includes("senate") || name.includes("senator"));
-        const isRepLike = isUS && (name.includes("house") || name.includes("representative") || name.includes("congress"));
-        const chamber = isSenLike ? "senate" : isRepLike ? "house" : "";
-        if (!chamber) continue;
-        const div = parseDivision(office.divisionId||"");
-        for (const idx of (office.officialIndices||[])){
-          const off = officials[idx];
-          if (!off) continue;
-          // Match to our current list
-          let m = CURRENT.find(x => x.state===div.state && x.chamber===chamber && (chamber==="senate" || String(x.district)===String(div.district||x.district)));
-          if (!m) {
-            const norm = (off.name||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim();
-            m = CURRENT.find(x => x.state===div.state && x.chamber===chamber && (x.name.toLowerCase().includes(norm) || norm.includes(x.name.toLowerCase())));
-          }
-          if (m) out.push(m);
-        }
-      }
-      return Array.from(new Map(out.map(m=>[m.bioguide,m])).values());
-    }
-
     goBtn.onclick = async () => {
       hideMsg();
       try {
         res.innerHTML = "";
         const address = addrEl.value.trim();
         if (!address) { showMsg("Enter an address.", "warn"); return; }
-        const data = await fetchRepresentatives(address);
-        renderResults(parseFederal(data));
+        const where = await censusGeocode(address);
+        const people = findMembers(where);
+        if (!people.length) {
+          showMsg(\`No current members found for \${where.state}-\${where.district}.\`, "warn");
+        }
+        renderResults(people);
       } catch (e){
         showMsg(e.message, "err");
       }
     };
     sampleBtn.onclick = () => { addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; goBtn.click(); };
-    checkKeyBtn.onclick = () => { hideMsg(); checkKey(); };
   </script>
 </body>
 </html>
