@@ -1,141 +1,189 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8"/>
-    <title>Demosthenes</title>
-    <meta name="viewport" content="width=device-width,initial-scale=1"/>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 2rem; }
-      input, button { font-size: 1rem; padding: .5rem .75rem; }
-      pre { background: #f6f8fa; padding: 1rem; overflow:auto; }
-    </style>
-  </head>
-  <body>
-    <h1>Demosthenes (placeholder)</h1>
-    <p>This static page will be replaced by a real app (Next.js) later.</p>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demosthenes — DW-NOMINATE Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:var(--fg); margin: 24px; }
+    h1 { font-size: 1.6rem; margin-bottom: 8px; }
+    p.hint { color: var(--muted); margin-top: 0; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 16px 0; }
+    input[type="search"], select { padding: .55rem .75rem; font-size: 1rem; border: 1px solid var(--border); border-radius: 8px; min-width: 260px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top: 12px; }
+    .row { display:flex; gap:16px; align-items:flex-start; }
+    img.portrait { width: 130px; height: auto; border-radius: 10px; border:1px solid var(--border); background:#fff; object-fit: cover; }
+    .kv { margin: 4px 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:.85rem; border:1px solid var(--border); background:white; }
+    .pill { display:inline-block; min-width: 80px; text-align:center; padding:2px 8px; border-radius: 999px; }
+    .pill.red { background:#fee2e2; }
+    .pill.blue { background:#dbeafe; }
+    .dim { color: var(--muted); }
+    .footer { margin-top: 28px; font-size: .9rem; color: var(--muted); }
+  </style>
+  <!-- Tiny YAML parser (for legislators-current.yaml) -->
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-K1xWdrZLkJrW9cGfV9j9P3Z0m1Y1o1d1qk3o1jC1S6M=" crossorigin="anonymous"></script>
+</head>
+<body>
+  <h1>Demosthenes</h1>
+  <p class="hint">Browse members of Congress and their DW-NOMINATE (Dim1) scores.</p>
 
-    <label>
-      Address:
-      <input id="addr" size="50" placeholder="1600 Pennsylvania Ave NW, Washington DC"/>
-    </label>
-    <button id="lookup">Who represents me?</button>
+  <div class="controls">
+    <input id="search" type="search" placeholder="Search by name, bioguide, party, state…" />
+    <select id="picker">
+      <option value="">— choose a member —</option>
+    </select>
+    <span id="count" class="dim"></span>
+  </div>
 
-    <h2>Result</h2>
-    <pre id="out">—</pre>
+  <div id="card" class="card">Select a member…</div>
 
-    <script>
-  // 1) Point to your Pages data base (adjust to your username if needed)
-  const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
-  const INDEX_URL = `${DATA_BASE}/indexes/members_index.tsv`;
+  <div class="footer">
+    Data source: Voteview + congress-legislators. Photos from unitedstates/images.  
+    Hosted from <span class="mono">demosthenes-data</span> via GitHub Pages.
+  </div>
 
-  // 2) Minimal TSV parser
-  async function fetchTSV(url) {
-    const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) throw new Error(`Failed to fetch ${url}`);
-    const text = await r.text();
-    const lines = text.trim().split(/\r?\n/);
-    const headers = lines.shift().split("\t");
-    return lines.map(line => {
-      const cols = line.split("\t");
-      const row = {};
-      headers.forEach((h, i) => (row[h] = cols[i] ?? ""));
-      return row;
-    });
-  }
+  <script>
+    // ---------- Config ----------
+    // Where your published data lives (change the username if needed).
+    const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
+    const INDEX_URL = `${DATA_BASE}/indexes/members_index.tsv`;
+    const YAML_URL  = `${DATA_BASE}/legislators-current.yaml`;
+    const IMG_URL   = (bioguide) => `${DATA_BASE}/images/${bioguide}.jpg`;
 
-  // 3) Render helpers
-  function el(tag, attrs = {}, children = []) {
-    const n = document.createElement(tag);
-    Object.entries(attrs).forEach(([k, v]) => (k === "class" ? (n.className = v) : n.setAttribute(k, v)));
-    (Array.isArray(children) ? children : [children]).forEach(c => n.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
-    return n;
-  }
+    // Allow local override for testing:
+    const override = localStorage.getItem("DEMOS_DATA_BASE");
+    const BASE = override && /^https?:\/\//.test(override) ? override.replace(/\/+$/,"") : DATA_BASE;
 
-  function renderMember(card, rec) {
-    card.innerHTML = "";
-    if (!rec) { card.textContent = "Select a member…"; return; }
+    // ---------- Utilities ----------
+    function el(tag, attrs = {}, children = []) {
+      const n = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === "class") n.className = v; else if (v != null) n.setAttribute(k, v);
+      }
+      (Array.isArray(children) ? children : [children]).forEach(c => n.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
+      return n;
+    }
 
-    const name = rec.full_name || rec.bioguide_id;
-    const img = el("img", {
-      src: `${DATA_BASE}/images/${rec.bioguide_id}.jpg`,
-      alt: name,
-      style: "width:120px;height:auto;border-radius:8px;border:1px solid #ddd;"
-    });
+    async function fetchText(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`Fetch failed: ${url}`);
+      return r.text();
+    }
 
-    const meta = el("div", { style: "margin-left:16px;" }, [
-      el("h3", {}, name),
-      el("p", {}, `Bioguide: ${rec.bioguide_id}`),
-      el("p", {}, `Chamber: ${rec.chamber || "?"} · State: ${rec.state_abbrev || "?"}`),
-      el("p", {}, `Party: ${rec.party_name || rec.party_code || "?"}`),
-      el("p", {}, `DW-NOMINATE (Dim1): ${rec.dw_nominate !== "" ? Number(rec.dw_nominate).toFixed(3) : "N/A"}`)
-    ]);
-
-    const row = el("div", { style: "display:flex;align-items:flex-start;gap:16px;" }, [img, meta]);
-    card.appendChild(row);
-  }
-
-  // 4) Page wiring
-  document.addEventListener("DOMContentLoaded", async () => {
-    const out = document.getElementById("out");
-    out.textContent = "Loading DW-NOMINATE index…";
-
-    try {
-      const data = await fetchTSV(INDEX_URL);
-
-      // Build display name from what Voteview provides (best effort)
-      data.forEach(d => {
-        // Voteview doesn't always include a single "name"; if you also publish YAML later, you can enrich this.
-        // For now, fall back to "Party State (Bioguide)" styling for clarity.
-        const label = `${(d.party_name || d.party_code || "?").toUpperCase()} ${d.state_abbrev || "??"} — ${d.bioguide_id}`;
-        d.full_name = d.full_name || d.name || label;
+    async function fetchTSV(url) {
+      const text = await fetchText(url);
+      const lines = text.trim().split(/\r?\n/);
+      const headers = lines.shift().split("\t");
+      return lines.map(line => {
+        const cols = line.split("\t");
+        const row = {};
+        headers.forEach((h, i) => row[h] = cols[i] ?? "");
+        return row;
       });
+    }
 
-      // Simple search + select UI
-      const search = el("input", { type: "search", placeholder: "Search by Bioguide, party, or state…", style: "padding:.5rem .75rem; width: 360px;" });
-      const picker = el("select", { style: "padding:.5rem .75rem; min-width: 360px; margin-left: 8px;" });
-      const card = el("div", { style: "margin-top: 16px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background:#fafafa;" });
+    function formatNameFromYaml(rec) {
+      const name = rec?.name || {};
+      return [name.first, name.middle, name.last].filter(Boolean).join(" ");
+    }
 
-      function matchesFilter(d, q) {
+    function partyPill(partyNameOrCode) {
+      const p = (partyNameOrCode || "").toUpperCase();
+      const cls = p.startsWith("D") ? "blue" : p.startsWith("R") ? "red" : "";
+      return `<span class="pill ${cls}">${p || "?"}</span>`;
+    }
+
+    // ---------- Render ----------
+    function renderMemberCard(target, info) {
+      if (!info) { target.textContent = "Select a member…"; return; }
+
+      const dw = info.dw_nominate !== "" ? Number(info.dw_nominate) : null;
+      const dwStr = dw != null && isFinite(dw) ? dw.toFixed(3) : "N/A";
+
+      target.innerHTML = "";
+      const img = el("img", { class:"portrait", src: IMG_URL(info.bioguide_id), alt: info.name || info.bioguide_id });
+      img.onerror = () => { img.style.visibility = "hidden"; img.style.height = "0"; };
+
+      const meta = el("div", {}, [
+        el("h3", {}, `${info.name || info.bioguide_id} ${partyPill(info.party_name || info.party_code)}`),
+        el("div", { class:"kv" }, `Bioguide: ${info.bioguide_id}`),
+        el("div", { class:"kv" }, `Chamber: ${info.chamber || "?"} · State: ${info.state_abbrev || "?"}`),
+        el("div", { class:"kv" }, `DW-NOMINATE (Dim1): ${dwStr}`)
+      ]);
+
+      target.appendChild(el("div", { class:"row" }, [img, meta]));
+    }
+
+    // ---------- Main ----------
+    (async function main() {
+      const out = document.getElementById("card");
+      const search = document.getElementById("search");
+      const picker = document.getElementById("picker");
+      const countEl = document.getElementById("count");
+
+      out.textContent = "Loading data…";
+
+      // 1) Load DW-NOM index (TSV)
+      const indexUrl = `${BASE}/indexes/members_index.tsv`;
+      const tsv = await fetchTSV(indexUrl);
+
+      // 2) Load legislators YAML → map bioguide → full name
+      let nameByBioguide = {};
+      try {
+        const yamlText = await fetchText(`${BASE}/legislators-current.yaml`);
+        const yamlObj = jsyaml.load(yamlText);
+        for (const rec of yamlObj) {
+          const bioguide = rec?.id?.bioguide;
+          if (bioguide) nameByBioguide[bioguide] = formatNameFromYaml(rec);
+        }
+      } catch (e) {
+        console.warn("Could not load/parse legislators-current.yaml; names may show as placeholders.", e);
+      }
+
+      // 3) Merge name onto TSV rows
+      const rows = tsv.map(r => ({
+        ...r,
+        name: nameByBioguide[r.bioguide_id] || `${(r.party_name || r.party_code || "?")} ${r.state_abbrev || "??"} — ${r.bioguide_id}`
+      }));
+
+      // 4) Populate picker with search filter
+      function matches(d, q) {
         if (!q) return true;
         const s = q.toLowerCase();
         return (
+          (d.name || "").toLowerCase().includes(s) ||
           (d.bioguide_id || "").toLowerCase().includes(s) ||
-          (d.party_name || "").toLowerCase().includes(s) ||
-          (d.party_code || "").toLowerCase().includes(s) ||
+          (d.party_name || d.party_code || "").toLowerCase().includes(s) ||
           (d.state_abbrev || "").toLowerCase().includes(s)
         );
       }
 
-      function populateSelect(q = "") {
-        const filtered = data.filter(d => matchesFilter(d, q)).sort((a, b) => (a.bioguide_id > b.bioguide_id ? 1 : -1));
-        picker.innerHTML = "";
-        picker.appendChild(el("option", { value: "" }, "— choose a member —"));
-        filtered.forEach(d => {
-          const txt = `${d.bioguide_id} · ${d.party_name || d.party_code || "?"} ${d.state_abbrev || "??"} · DW-NOM: ${d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A"}`;
-          picker.appendChild(el("option", { value: d.bioguide_id }, txt));
+      function populate(q = "") {
+        const list = rows.filter(d => matches(d, q))
+          .sort((a, b) => (a.name > b.name ? 1 : -1));
+        picker.innerHTML = '<option value="">— choose a member —</option>';
+        list.forEach(d => {
+          const dw = d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A";
+          const label = `${d.name} · ${d.party_name || d.party_code || "?"} ${d.state_abbrev || "??"} · DW-NOM: ${dw}`;
+          picker.appendChild(el("option", { value: d.bioguide_id }, label));
         });
+        countEl.textContent = `${list.length} match${list.length===1?"":"es"}`;
       }
 
-      search.addEventListener("input", () => populateSelect(search.value));
+      search.addEventListener("input", () => populate(search.value));
       picker.addEventListener("change", () => {
-        const rec = data.find(d => d.bioguide_id === picker.value);
-        renderMember(card, rec);
+        const rec = rows.find(r => r.bioguide_id === picker.value);
+        renderMemberCard(out, rec);
       });
 
-      // Initial UI
-      out.innerHTML = "";
-      out.parentNode.insertBefore(el("div", {}, [
-        search,
-        picker,
-        card
-      ]), out);
-      populateSelect("");
-
-      card.textContent = "Select a member…";
-    } catch (e) {
-      out.textContent = `Failed to load index: ${e}`;
-    }
-  });
-</script>
-  </body>
+      populate("");
+      out.textContent = "Select a member…";
+    })().catch(err => {
+      document.getElementById("card").textContent = `Failed to load: ${err}`;
+    });
+  </script>
+</body>
 </html>
