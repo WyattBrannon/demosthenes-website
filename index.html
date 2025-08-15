@@ -9,17 +9,19 @@
     body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:24px; }
     h1 { font-size:1.6rem; margin-bottom:8px; }
     p.hint { color:var(--muted); margin-top:0; }
-    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:16px 0; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 16px 0 8px; }
     input[type="search"], select { padding:.55rem .75rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:260px; }
+    .cohort { display:flex; gap:8px; align-items:center; font-size:.95rem; color:var(--muted); margin: 4px 0 12px; }
+    .cohort label { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; }
     .row { display:flex; gap:16px; align-items:flex-start; }
     img.portrait { width:130px; height:auto; border-radius:10px; border:1px solid var(--border); background:#fff; object-fit:cover; }
     .kv { margin:4px 0; }
     .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-    .pill { display:inline-block; min-width:80px; text-align:center; padding:2px 8px; border-radius:999px; }
-    .pill.red { background:#fee2e2; }
-    .pill.blue { background:#dbeafe; }
-    .pill.gray { background:#e5e7eb; }
+    .pill { display:inline-block; min-width:24px; text-align:center; padding:2px 8px; border-radius:999px; font-weight:600; margin-left:8px; }
+    .pill.red { background:#fee2e2; color:#991b1b; }
+    .pill.blue { background:#dbeafe; color:#1e3a8a; }
+    .pill.gray { background:#e5e7eb; color:#374151; }
     .dim { color:var(--muted); }
     .legend { margin-top:12px; color:var(--muted); font-size:.95rem; line-height:1.35; }
     .ideo-wrap { margin-top:8px; }
@@ -52,6 +54,13 @@
       <option value="">— choose a member —</option>
     </select>
     <span id="count" class="dim"></span>
+  </div>
+
+  <div class="cohort" id="cohort-controls" role="group" aria-label="Percentile cohort">
+    <span class="dim">Percentile cohort:</span>
+    <label><input type="radio" name="cohort" value="both" checked /> Both chambers</label>
+    <label><input type="radio" name="cohort" value="house" /> House</label>
+    <label><input type="radio" name="cohort" value="senate" /> Senate</label>
   </div>
 
   <div id="card" class="card">Select a member…</div>
@@ -104,11 +113,11 @@
       if (["328","329","331"].includes(c)) return "I";
       return "";
     }
-    function partyBadge(partyName, partyCode){
+    function partyPillElem(partyName, partyCode){
       const label = (partyName || "").trim() || partyCodeToLetter(partyCode) || "?";
       const up = label.toUpperCase();
       const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
-      return `<span class="pill ${cls}">${up}</span>`;
+      return el("span",{class:`pill ${cls}`}, up);
     }
     function seatText(chamber, stateAbbrev, district){
       const c = (chamber||"").toLowerCase();
@@ -124,8 +133,6 @@
       const p = ((dim1 + 1) / 2) * 100;
       return Math.max(0, Math.min(100, p));
     }
-
-    // Percentile phrase: compares to all current members with Dim1
     function percentilePhrase(dim1, cohortValues){
       if (dim1 == null || !isFinite(dim1) || !cohortValues.length) return "";
       let less = 0, equal = 0, greater = 0;
@@ -135,24 +142,33 @@
         else equal++;
       }
       const n = cohortValues.length;
-      // percentile with ties split
-      const pctRight = ((less + 0.5*equal) / n) * 100;     // % to the member's left → member is to the right of this %
-      const pctLeft  = ((greater + 0.5*equal) / n) * 100;   // % to the member's right → member is to the left of this %
+      const pctRight = ((less + 0.5*equal) / n) * 100;   // % to the left of member
+      const pctLeft  = ((greater + 0.5*equal) / n) * 100; // % to the right of member
       const dir = dim1 >= 0 ? "right" : "left";
       const val = dim1 >= 0 ? pctRight : pctLeft;
       const rounded = Math.round(val);
       return `(to the ${dir} of ${rounded}% of Congress)`;
     }
 
-    // ------- render -------
-    let COHORT_DIM1 = []; // filled after data load
+    // ------- state -------
+    let ROWS = []; // merged current members (both chambers)
+    let COHORT = { both: [], house: [], senate: [] };
+    let selectedBioguide = null;
 
+    function currentCohortValues(){
+      const v = document.querySelector('input[name="cohort"]:checked')?.value || "both";
+      if (v === "house") return COHORT.house;
+      if (v === "senate") return COHORT.senate;
+      return COHORT.both;
+    }
+
+    // ------- render -------
     function renderMemberCard(target, info){
       if(!info){ target.textContent="Select a member…"; return; }
 
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
-      const pctStr = (dim1!=null && isFinite(dim1)) ? ` ${percentilePhrase(dim1, COHORT_DIM1)}` : "";
+      const pctStr = (dim1!=null && isFinite(dim1)) ? ` ${percentilePhrase(dim1, currentCohortValues())}` : "";
 
       const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
       const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
@@ -161,6 +177,11 @@
       target.innerHTML="";
       const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
+
+      const header = el("h3");
+      header.appendChild(document.createTextNode(info.name || info.bioguide_id));
+      header.appendChild(partyPillElem(info.party_name, info.party_code));
+      header.appendChild(document.createTextNode(` ${seatText(info.chamber, info.state_abbrev, info.district)}`));
 
       const p = dim1ToPercent(dim1);
       const bar = el("div",{class:"ideo-wrap"},[
@@ -173,7 +194,7 @@
       ]);
 
       const meta = el("div",{},[
-        el("h3",{},`${info.name||info.bioguide_id} ${partyBadge(info.party_name, info.party_code)} ${seatText(info.chamber, info.state_abbrev, info.district)}`),
+        header,
         el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
         el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
         el("div",{class:"kv"} ,`DW-NOMINATE Dim1: ${dim1Str} ${pctStr}`),
@@ -185,12 +206,51 @@
       target.appendChild(el("div",{class:"row"},[img,meta]));
     }
 
+    function populateDropdown(q=""){
+      const picker = document.getElementById("picker");
+      const countEl = document.getElementById("count");
+
+      function matches(d,q){
+        if(!q) return true;
+        const s=q.toLowerCase();
+        return (
+          (d.name||"").toLowerCase().includes(s) ||
+          (d.last_name||"").toLowerCase().includes(s) ||
+          (d.bioguide_id||"").toLowerCase().includes(s) ||
+          (d.party_name||d.party_code||"").toLowerCase().includes(s) ||
+          (d.state_abbrev||"").toLowerCase().includes(s)
+        );
+      }
+
+      const list = ROWS
+        .filter(d=>matches(d,q))
+        .sort((a,b)=>{
+          const la=a.last_name.toLowerCase(), lb=b.last_name.toLowerCase();
+          if(la<lb) return -1; if(la>lb) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      picker.innerHTML = '<option value="">— choose a member —</option>';
+      for(const d of list){
+        const dim1 = d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A";
+        const dim2Raw = d.dw_nominate2 ?? d.nominate_dim2 ?? "";
+        const dim2 = dim2Raw!=="" ? Number(dim2Raw).toFixed(3) : "N/A";
+        const party = (d.party_name || partyCodeToLetter(d.party_code) || "?");
+        const seat = (d.chamber.toLowerCase()==="senate")
+          ? `(${d.state_abbrev||"??"})`
+          : `(${d.state_abbrev||"??"}-${(d.district===0||d.district==="0")?"AL":(d.district||"").toString().padStart(2,"0")})`;
+        const firstNames = d.name.replace(new RegExp(d.last_name+'$'),'').trim();
+        const label = `${d.last_name.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
+        picker.appendChild(el("option",{value:d.bioguide_id},label));
+      }
+      countEl.textContent = `${list.length} shown`;
+    }
+
     // ------- main -------
     (async function(){
       const out = document.getElementById("card");
       const search = document.getElementById("search");
       const picker = document.getElementById("picker");
-      const countEl = document.getElementById("count");
 
       out.textContent="Loading data…";
 
@@ -235,7 +295,7 @@
         else if(!have.dw_nominate && thisHasDim1) byBioguide.set(bid, r);
       }
 
-      const rows = Array.from(byBioguide.values()).map(r => {
+      ROWS = Array.from(byBioguide.values()).map(r => {
         const seat = seatByBioguide[r.bioguide_id] || {};
         return {
           ...r,
@@ -247,53 +307,30 @@
         };
       });
 
-      // Build cohort of Dim1 values for percentile calc (exclude missing)
-      COHORT_DIM1 = rows
-        .map(r => (r.dw_nominate!=="" ? Number(r.dw_nominate) : null))
-        .filter(v => v!=null && isFinite(v));
+      // 3) Build cohorts for percentile calc
+      COHORT.both = ROWS.map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null).filter(v => v!=null && isFinite(v));
+      COHORT.house = ROWS.filter(r => (r.chamber||"").toLowerCase()==="house")
+                         .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
+                         .filter(v => v!=null && isFinite(v));
+      COHORT.senate= ROWS.filter(r => (r.chamber||"").toLowerCase()==="senate")
+                         .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
+                         .filter(v => v!=null && isFinite(v));
 
-      // 3) UI: search + dropdown (sorted by LAST name)
-      function matches(d,q){
-        if(!q) return true;
-        const s=q.toLowerCase();
-        return (
-          (d.name||"").toLowerCase().includes(s) ||
-          (d.last_name||"").toLowerCase().includes(s) ||
-          (d.bioguide_id||"").toLowerCase().includes(s) ||
-          (d.party_name||d.party_code||"").toLowerCase().includes(s) ||
-          (d.state_abbrev||"").toLowerCase().includes(s)
-        );
-      }
-      function populate(q=""){
-        const list = rows
-          .filter(d=>matches(d,q))
-          .sort((a,b)=>{
-            const la=a.last_name.toLowerCase(), lb=b.last_name.toLowerCase();
-            if(la<lb) return -1; if(la>lb) return 1;
-            return a.name.localeCompare(b.name);
-          });
-
-        picker.innerHTML = '<option value="">— choose a member —</option>';
-        for(const d of list){
-          const dim1 = d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A";
-          const dim2Raw = d.dw_nominate2 ?? d.nominate_dim2 ?? "";
-          const dim2 = dim2Raw!=="" ? Number(dim2Raw).toFixed(3) : "N/A";
-          const party = (d.party_name || partyCodeToLetter(d.party_code) || "?");
-          const seat = seatText(d.chamber, d.state_abbrev, d.district);
-          const firstNames = d.name.replace(new RegExp(d.last_name+'$'),'').trim();
-          const label = `${d.last_name.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
-          picker.appendChild(el("option",{value:d.bioguide_id},label));
-        }
-        countEl.textContent = `${list.length} shown`;
-      }
-
-      document.getElementById("search").addEventListener("input",()=>populate(document.getElementById("search").value));
+      // 4) Wire UI
+      document.getElementById("search").addEventListener("input",()=>populateDropdown(document.getElementById("search").value));
       picker.addEventListener("change",()=>{
-        const rec = rows.find(r=>r.bioguide_id===picker.value);
+        selectedBioguide = picker.value || null;
+        const rec = ROWS.find(r=>r.bioguide_id===selectedBioguide);
+        renderMemberCard(out, rec);
+      });
+      // cohort toggle → recompute percentile display for the currently selected member
+      document.getElementById("cohort-controls").addEventListener("change", ()=>{
+        if(!selectedBioguide) return;
+        const rec = ROWS.find(r=>r.bioguide_id===selectedBioguide);
         renderMemberCard(out, rec);
       });
 
-      populate("");
+      populateDropdown("");
       out.textContent="Select a member…";
     })().catch(err=>{
       document.getElementById("card").textContent = `Failed to load: ${err}`;
