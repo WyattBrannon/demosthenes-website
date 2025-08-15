@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Demosthenes — Members & DW-NOMINATE</title>
+  <title>Demosthenes — Members & DW‑NOMINATE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; }
@@ -21,14 +21,31 @@
     .pill.blue { background:#dbeafe; }
     .pill.gray { background:#e5e7eb; }
     .dim { color:var(--muted); }
+    .legend { margin-top:12px; color:var(--muted); font-size:.95rem; line-height:1.35; }
+    /* ideology bar */
+    .ideo-wrap { margin-top:8px; }
+    .ideo-scale {
+      position: relative;
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: linear-gradient(90deg, #3b82f6 0%, #ef4444 100%); /* blue → red */
+      overflow: visible;
+    }
+    .ideo-marker {
+      position: absolute; top: 50%;
+      width: 10px; height: 10px; background: #111; border-radius: 2px;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 0 2px rgba(255,255,255,.9);
+    }
+    .ideo-labels { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); margin-top:4px; }
     .footer { margin-top:28px; font-size:.9rem; color:var(--muted); }
   </style>
-  <!-- Tiny YAML parser (for legislators-current.yaml) -->
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <h1>Demosthenes</h1>
-  <p class="hint">Current <b>House & Senate</b> members with DW-NOMINATE scores (Dim1 & Dim2).</p>
+  <p class="hint">Current <b>House & Senate</b> members with DW‑NOMINATE scores (Dim1 & Dim2).</p>
 
   <div class="controls">
     <input id="search" type="search" placeholder="Search by name, bioguide, party, state…" />
@@ -40,16 +57,20 @@
 
   <div id="card" class="card">Select a member…</div>
 
+  <div class="legend">
+    <b>What do these mean?</b><br/>
+    <b>Dim1</b> ≈ liberal ↔ conservative ideology (≈ −1 left, +1 right). The black square marks the member’s Dim1 on the blue→red bar.<br/>
+    <b>Dim2</b> captures secondary cleavages (e.g., regional/issue splits). It’s often near 0 in modern Congresses.
+  </div>
+
   <div class="footer">
-    Data: Voteview + congress-legislators · Photos: unitedstates/images · Served from <span class="mono">demosthenes-data</span>.
+    Data: Voteview + congress‑legislators · Photos: unitedstates/images · Served from <span class="mono">demosthenes-data</span>.
   </div>
 
   <script>
     // ------- Config -------
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // change username if needed
     const todayISO = new Date().toISOString().slice(0,10);
-
-    // allow local override for testing:
     const override = localStorage.getItem("DEMOS_DATA_BASE");
     const BASE = override && /^https?:\/\//.test(override) ? override.replace(/\/+$/,"") : DATA_BASE;
 
@@ -79,11 +100,10 @@
     function lastNameFromYaml(rec){ return (rec?.name?.last || "").toString(); }
     function partyCodeToLetter(code){
       const c = (code||"").toString().trim();
-      // Common Voteview codes
       if (c === "100") return "D";
       if (c === "200") return "R";
-      if (c === "328" || c === "331" || c==="329") return "I"; // various independents
-      return ""; // unknown
+      if (["328","329","331"].includes(c)) return "I";
+      return "";
     }
     function partyBadge(partyName, partyCode){
       const label = (partyName || "").trim() || partyCodeToLetter(partyCode) || "?";
@@ -91,25 +111,29 @@
       const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
       return `<span class="pill ${cls}">${up}</span>`;
     }
-
-    // Seat text like (AZ-08) for House or (AZ) for Senate
     function seatText(chamber, stateAbbrev, district){
-      if ((chamber||"").toLowerCase()==="house" || (chamber||"").toLowerCase()==="rep") {
-        // some datasets store district as number or string
-        const d = (district===0 || district==="0") ? "AL" : (district||"").toString().padStart(2,"0"); // 0 -> At-Large
+      const c = (chamber||"").toLowerCase();
+      if (c==="house" || c==="rep") {
+        const d = (district===0 || district==="0") ? "AL" : (district||"").toString().padStart(2,"0");
         return `(${stateAbbrev || "??"}-${d})`;
       } else {
         return `(${stateAbbrev || "??"})`;
       }
     }
+    // map Dim1 in [-1,1] → 0..100% (clamp just in case)
+    function dim1ToPercent(dim1){
+      if (dim1 == null || !isFinite(dim1)) return null;
+      const p = ((dim1 + 1) / 2) * 100;
+      return Math.max(0, Math.min(100, p));
+    }
 
     // ------- render -------
     function renderMemberCard(target, info){
       if(!info){ target.textContent="Select a member…"; return; }
+
       const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
 
-      // allow for a second dimension field if present in your index
       const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
       const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
       const dim2Str = (dim2!=null && isFinite(dim2)) ? dim2.toFixed(3) : "N/A";
@@ -117,13 +141,28 @@
       target.innerHTML="";
       const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
+
+      // ideology bar with marker
+      const p = dim1ToPercent(dim1);
+      const bar = el("div",{class:"ideo-wrap"},[
+        el("div",{class:"ideo-scale"}, p==null ? [] : el("div",{class:"ideo-marker", style:`left:${p}%;`}))
+      ]);
+      const axis = el("div",{class:"ideo-labels"},[
+        el("span",{}, "−1 (liberal)"),
+        el("span",{}, "0"),
+        el("span",{}, "+1 (conservative)")
+      ]);
+
       const meta = el("div",{},[
         el("h3",{},`${info.name||info.bioguide_id} ${partyBadge(info.party_name, info.party_code)} ${seatText(info.chamber, info.state_abbrev, info.district)}`),
         el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
         el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
-        el("div",{class:"kv"} ,`DW-NOMINATE Dim1: ${dim1Str}`),
-        el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`)
+        el("div",{class:"kv"} ,`DW‑NOMINATE Dim1: ${dim1Str}`),
+        bar,
+        axis,
+        el("div",{class:"kv"} ,`DW‑NOMINATE Dim2: ${dim2Str}`)
       ]);
+
       target.appendChild(el("div",{class:"row"},[img,meta]));
     }
 
@@ -136,14 +175,14 @@
 
       out.textContent="Loading data…";
 
-      // 1) Load current legislators YAML and build sets/maps
+      // 1) Current members from YAML (both chambers)
       const yamlText = await fetchText(YAML_URL);
       const yamlObj = jsyaml.load(yamlText);
 
-      const currentSet = new Set(); // bioguides for current House+Senate
+      const currentSet = new Set();
       const nameByBioguide = {};
       const lastByBioguide = {};
-      const seatByBioguide = {}; // { chamber, state_abbrev, district? }
+      const seatByBioguide = {};
 
       for(const rec of yamlObj){
         const terms = rec?.terms||[];
@@ -165,18 +204,16 @@
         }
       }
 
-      // 2) Load DW-NOM index (TSV) and filter to current members (both chambers)
+      // 2) DW‑NOM index TSV → filter to current members; prefer rows with Dim1 present
       const tsv = await fetchTSV(INDEX_URL);
-
-      // dedupe by bioguide, prefer a row with a Dim1 value
       const byBioguide = new Map();
       for(const r of tsv){
         const bid = r.bioguide_id;
         if(!currentSet.has(bid)) continue;
         const have = byBioguide.get(bid);
         const thisHasDim1 = r.dw_nominate !== "";
-        if(!have) { byBioguide.set(bid, r); }
-        else if(!have.dw_nominate && thisHasDim1) { byBioguide.set(bid, r); }
+        if(!have) byBioguide.set(bid, r);
+        else if(!have.dw_nominate && thisHasDim1) byBioguide.set(bid, r);
       }
 
       const rows = Array.from(byBioguide.values()).map(r => {
@@ -188,11 +225,10 @@
           chamber: seat.chamber || r.chamber || "",
           state_abbrev: seat.state_abbrev || r.state_abbrev || "",
           district: seat.district ?? r.district ?? ""
-          // dim2 will be read if present: r.dw_nominate2 / r.nominate_dim2
         };
       });
 
-      // 3) UI: search + dropdown, sorted by LAST name
+      // 3) UI: search + dropdown (sorted by LAST name)
       function matches(d,q){
         if(!q) return true;
         const s=q.toLowerCase();
@@ -220,7 +256,8 @@
           const dim2 = dim2Raw!=="" ? Number(dim2Raw).toFixed(3) : "N/A";
           const party = (d.party_name || partyCodeToLetter(d.party_code) || "?");
           const seat = seatText(d.chamber, d.state_abbrev, d.district);
-          const label = `${d.last_name.toUpperCase()}, ${d.name.replace(new RegExp(d.last_name+'$'),'').trim()} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
+          const firstNames = d.name.replace(new RegExp(d.last_name+'$'),'').trim();
+          const label = `${d.last_name.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
           picker.appendChild(el("option",{value:d.bioguide_id},label));
         }
         countEl.textContent = `${list.length} shown`;
