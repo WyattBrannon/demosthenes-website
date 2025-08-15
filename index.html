@@ -5,13 +5,13 @@
   <title>Demosthenes — Find Your Representatives</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; --accent:#2563eb; }
+    :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; --accent:#2563eb; --warn:#b45309; --err:#b91c1c; }
     body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:24px; }
     h1 { font-size:1.8rem; margin:0 0 8px; }
     p.hint { color:var(--muted); margin-top:0; }
     .wrap { display:grid; grid-template-columns: 1fr; gap:16px; max-width:900px; }
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-    input[type="search"], input[type="text"] { padding:.6rem .8rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:280px; flex:1; }
+    input[type="text"] { padding:.6rem .8rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:280px; flex:1; }
     button { padding:.6rem .9rem; font-size:1rem; border:1px solid var(--border); border-radius:10px; background:#fff; cursor:pointer; }
     button.primary { background:var(--accent); color:white; border-color:var(--accent); }
     .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
@@ -24,6 +24,9 @@
     a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
     .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .dim { color:var(--muted); }
+    .msg { padding:8px 10px; border-radius:8px; margin-top:8px; border:1px solid var(--border); background:#fff; }
+    .msg.warn { border-color:#fed7aa; background:#fffbeb; color:var(--warn); }
+    .msg.err  { border-color:#fecaca; background:#fef2f2; color:var(--err); white-space:pre-wrap; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
@@ -38,7 +41,7 @@
       <div class="row">
         <input id="addr" type="text" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC" />
         <button class="primary" id="go">Find my reps</button>
-        <button id="useLoc">Use my location</button>
+        <button id="useSample">Try sample</button>
       </div>
       <div class="settings" style="margin-top:8px;">
         Data source: <span class="mono" id="dataBaseLabel"></span> ·
@@ -47,6 +50,8 @@
         <label>Set Civic API key: <input id="civicKey" type="text" placeholder="AIza... (stored locally)" style="min-width:300px;" /></label>
         <button id="saveKey">Save</button>
         <button id="clearKey">Clear</button>
+        <button id="checkKey">Check API key</button>
+        <div id="msg" class="msg warn" style="display:none;"></div>
       </div>
     </section>
 
@@ -67,14 +72,22 @@
     // ---------- DOM ----------
     const addrEl = document.getElementById("addr");
     const goBtn = document.getElementById("go");
-    const useLocBtn = document.getElementById("useLoc");
+    const sampleBtn = document.getElementById("useSample");
     const res = document.getElementById("results");
     const civicKeyEl = document.getElementById("civicKey");
     const saveKeyBtn = document.getElementById("saveKey");
     const clearKeyBtn = document.getElementById("clearKey");
+    const checkKeyBtn = document.getElementById("checkKey");
     const keyState = document.getElementById("keyState");
     const dataBaseLabel = document.getElementById("dataBaseLabel");
+    const msg = document.getElementById("msg");
     dataBaseLabel.textContent = BASE;
+
+    function showMsg(text, kind="warn"){
+      msg.textContent = text;
+      msg.className = "msg " + kind;
+      msg.style.display = "block";
+    }
 
     // ---------- Helpers ----------
     function partyPill(party){
@@ -82,7 +95,6 @@
       const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
       return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`;
     }
-    function textNode(s){ return document.createTextNode(s); }
     function el(tag, attrs = {}, children = []){
       const n = document.createElement(tag);
       Object.entries(attrs).forEach(([k,v]) => k==="class" ? (n.className=v) : v!=null && n.setAttribute(k,v));
@@ -100,7 +112,7 @@
 
     // ---------- Load current members ----------
     const todayISO = new Date().toISOString().slice(0,10);
-    let CURRENT = []; // {bioguide, name, state, district, chamber, norm}
+    let CURRENT = []; // {bioguide, name, state, district, chamber, party, norm}
     (async function loadMembers(){
       const yamlText = await (await fetch(YAML_URL,{cache:"no-store"})).text();
       const yamlObj = jsyaml.load(yamlText);
@@ -111,15 +123,25 @@
         out.push({
           bioguide: rec?.id?.bioguide,
           name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
-          last: rec?.name?.last || "",
+          state: t.state,
+          district: t.type==="rep" ? (t.district ?? "") : "",
+          chamber: t.type==="rep" ? "senate" : "house" // will fix below (intentional swap to detect issues)
+        });
+      }
+      // fix swap bug (just in case): correct chamber setting
+      CURRENT = yamlObj.map(rec => {
+        const t = lastTermCurrent(rec, todayISO);
+        if(!t) return null;
+        return {
+          bioguide: rec?.id?.bioguide,
+          name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
           state: t.state,
           district: t.type==="rep" ? (t.district ?? "") : "",
           chamber: t.type==="rep" ? "house" : "senate",
-          party: (t.party || rec?.party || ""),
+          party: t.party || (rec?.party)||"",
           norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
-        });
-      }
-      CURRENT = out;
+        };
+      }).filter(Boolean);
     })();
 
     // ---------- Civic API ----------
@@ -132,46 +154,45 @@
     saveKeyBtn.onclick = ()=>{ localStorage.setItem("GOOGLE_CIVIC_API_KEY", civicKeyEl.value.trim()); setKeyUI(); };
     clearKeyBtn.onclick = ()=>{ localStorage.removeItem("GOOGLE_CIVIC_API_KEY"); setKeyUI(); };
 
+    async function civicFetch(url){
+      const r = await fetch(url);
+      if (r.ok) return r.json();
+      let detail = "";
+      try { const j = await r.json(); detail = j.error?.message || JSON.stringify(j); } catch {}
+      const err = new Error(`Civic API error: ${r.status}${detail?` — ${detail}`:""}`);
+      err.status = r.status; err.detail = detail;
+      throw err;
+    }
+
     async function fetchCivic(address){
       const key = civicKey();
       if (!key) throw new Error("No Civic API key set. Paste it above and click Save.");
-      const params = new URLSearchParams({
-        address,
-        levels: "country",
-        roles: "legislatorUpperBody,legislatorLowerBody",
-        key
-      });
+      const params = new URLSearchParams({ address, key });
+      // Note: drop levels/roles to reduce chance of 400 due to param combos, filter client-side instead
       const url = `https://civicinfo.googleapis.com/civicinfo/v2/representatives?${params.toString()}`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("Civic API error: "+r.status);
-      return r.json();
+      return civicFetch(url);
+    }
+
+    async function checkKey(){
+      const key = civicKey();
+      if (!key) { showMsg("No key saved. Paste your Google Civic Information API key and click Save.", "warn"); return; }
+      const url = `https://civicinfo.googleapis.com/civicinfo/v2/divisions?query=United%20States&key=${encodeURIComponent(key)}`;
+      try {
+        await civicFetch(url);
+        showMsg("Key looks valid and the API is enabled for your project.", "msg");
+      } catch (e) {
+        showMsg(`Key test failed: ${e.message}
+Common fixes:
+• Ensure the API is enabled (Google Cloud Console → APIs & Services → Enable APIs & Services → Civic Information API).
+• If your key has HTTP referrer restrictions, add your Pages domain (e.g., https://<your-user>.github.io/*).
+• Or remove restrictions temporarily to test.`, "err");
+      }
     }
 
     function parseDivision(divId){
-      // e.g., "ocd-division/country:us/state:az/cd:1"
       const mState = divId.match(/state:([a-z]{2})/i);
       const mCd = divId.match(/cd:(\d+)/i);
-      return {
-        state: mState ? mState[1].toUpperCase() : "",
-        district: mCd ? mCd[1] : ""
-      };
-    }
-
-    function matchToBioguide(name, division, chamberGuess){
-      // Prefer exact state & district match; fall back to name+state
-      const norm = normalizeName(name);
-      const state = division.state;
-      const district = division.district;
-      let pool = CURRENT.filter(m => m.state===state && m.chamber===chamberGuess);
-      if (chamberGuess==="house" && district) {
-        const exact = pool.find(m => String(m.district) === String(district));
-        if (exact) return exact;
-      }
-      // fallback: fuzzy by name within state & chamber
-      const byName = pool.find(m => m.norm === norm) || pool.find(m => m.norm.includes(norm) || norm.includes(m.norm));
-      if (byName) return byName;
-      // last resort: any name match across all
-      return CURRENT.find(m => m.norm === norm) || null;
+      return { state: mState ? mState[1].toUpperCase() : "", district: mCd ? mCd[1] : "" };
     }
 
     function renderResults(people){
@@ -189,7 +210,7 @@
           el("div",{class:"member"},[
             img,
             el("div",{},[
-              el("div",{},[document.createTextNode(p.name+" "), (function(){const d=document.createElement("span"); d.innerHTML=partyPill(p.party); return d;})()]),
+              el("div",{},`${p.name}`),
               el("div",{class:"dim"}, `${p.chamber==="senate"?"Senator":"Representative"} ${seat}`),
               a
             ])
@@ -199,48 +220,50 @@
       }
     }
 
+    function filterFederal(googleJson){
+      const officials = googleJson.officials || [];
+      const offices = googleJson.offices || [];
+      const results = [];
+      for (const office of offices){
+        const div = parseDivision(office.divisionId||"");
+        const name = (office.name||"").toLowerCase();
+        const isUS = (name.includes("united states") || name.includes("u.s.") || name.includes("us "));
+        const isSenLike = isUS && (name.includes("senate") || name.includes("senator"));
+        const isRepLike = isUS && (name.includes("house") || name.includes("representative") || name.includes("congress"));
+        const chamber = isSenLike ? "senate" : isRepLike ? "house" : "";
+        if (!chamber) continue;
+        for (const idx of (office.officialIndices||[])){
+          const off = officials[idx];
+          if (!off) continue;
+          // match by division
+          let m = CURRENT.find(x => x.state===div.state && x.chamber===chamber && (chamber==="senate" || String(x.district)===String(div.district||x.district)));
+          // fallback by name+state
+          if (!m) {
+            const norm = (off.name||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim();
+            m = CURRENT.find(x => x.state===div.state && x.chamber===chamber && (x.name.toLowerCase().includes(norm) || norm.includes(x.name.toLowerCase())));
+          }
+          if (m) results.push(m);
+        }
+      }
+      // Deduplicate by bioguide
+      return Array.from(new Map(results.map(m=>[m.bioguide,m])).values());
+    }
+
     // ---------- Actions ----------
     goBtn.onclick = async () => {
+      msg.style.display = "none";
       try {
         res.innerHTML = "";
         const address = addrEl.value.trim();
-        if (!address) { alert("Enter an address."); return; }
+        if (!address) { showMsg("Enter an address.", "warn"); return; }
         const data = await fetchCivic(address);
-        const officials = data.officials || [];
-        const offices = data.offices || [];
-        const results = [];
-        for (const office of offices){
-          const div = parseDivision(office.divisionId||"");
-          const isSen = (office.roles||[]).includes("legislatorUpperBody");
-          const isRep = (office.roles||[]).includes("legislatorLowerBody");
-          const chamber = isSen ? "senate" : isRep ? "house" : "";
-          if (!chamber) continue;
-          for (const idx of (office.officialIndices||[])){
-            const off = officials[idx];
-            if (!off) continue;
-            const match = matchToBioguide(off.name, div, chamber);
-            if (match) results.push(match);
-          }
-        }
-        // Deduplicate by bioguide
-        const uniq = Array.from(new Map(results.map(m=>[m.bioguide,m])).values());
-        renderResults(uniq);
+        renderResults(filterFederal(data));
       } catch (e){
-        res.innerHTML = "";
-        res.appendChild(el("div",{class:"card"}, `Error: ${e.message}`));
+        showMsg(e.message, "err");
       }
     };
-
-    useLocBtn.onclick = () => {
-      if (!navigator.geolocation) { alert("Geolocation not supported."); return; }
-      navigator.geolocation.getCurrentPosition(async (pos)=>{
-        const {latitude, longitude} = pos.coords;
-        // Basic reverse geocode via Google Maps Geocoding API would require another key.
-        alert("Paste your address manually for now (reverse geocoding not set up).");
-      }, (err)=>{
-        alert("Location error: "+err.message);
-      });
-    };
+    sampleBtn.onclick = () => { addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; goBtn.click(); };
+    checkKeyBtn.onclick = () => { checkKey(); };
   </script>
 </body>
 </html>
