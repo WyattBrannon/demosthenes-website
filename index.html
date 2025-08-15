@@ -25,6 +25,9 @@
     .msg { padding:8px 10px; border-radius:8px; margin-top:8px; border:1px solid var(--border); background:#fff; white-space:pre-wrap; }
     .msg.warn { border-color:#fed7aa; background:#fffbeb; color:var(--warn); }
     .msg.err  { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+    details { margin-top:8px; }
+    summary { cursor:pointer; }
+    #debug pre { background:#fff; border:1px solid var(--border); padding:8px; border-radius:8px; overflow:auto; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
@@ -32,7 +35,7 @@
   <div class="wrap">
     <header>
       <h1>Demosthenes</h1>
-      <p class="hint">Type your address to find your two Senators and your Representative (U.S. Census Geocoder).</p>
+      <p class="hint">Type your address to find your two Senators and your Representative (Census Geocoder with FCC fallback).</p>
     </header>
 
     <section class="card">
@@ -44,13 +47,14 @@
       <div class="settings" style="margin-top:8px;">
         Data base: <span class="mono" id="dataBaseLabel"></span>
         <div id="msg" class="msg warn" style="display:none;"></div>
+        <details id="debug"><summary>Debug info</summary><pre id="dbgpre"></pre></details>
       </div>
     </section>
 
     <section id="results" class="result-grid"></section>
 
     <footer class="dim">
-      Data: Voteview + congress-legislators · Address lookup: U.S. Census Geocoder.
+      Data: Voteview + congress-legislators · Address lookup: U.S. Census Geocoder → FCC Block API (fallback) with OSM geocoding.
     </footer>
   </div>
 
@@ -68,87 +72,64 @@
     const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
     const dataBaseLabel = document.getElementById("dataBaseLabel");
     dataBaseLabel.textContent = BASE;
-
-    const YAML_CANDIDATES = [
-      `${BASE}/legislators-current.yaml`,
-      `${BASE}/congress/legislators-current.yaml`,
-      `${BASE}/congress-legislators/legislators-current.yaml`
-    ];
+    const YAML_URL = `${BASE}/legislators-current.yaml`;
 
     const addrEl = document.getElementById("addr");
     const goBtn = document.getElementById("go");
     const sampleBtn = document.getElementById("useSample");
     const res = document.getElementById("results");
     const msg = document.getElementById("msg");
+    const dbgpre = document.getElementById("dbgpre");
 
+    function debug(line){ dbgpre.textContent += line + "\n"; }
     function showMsg(text, kind="warn"){ msg.textContent = text; msg.className = "msg " + kind; msg.style.display = "block"; }
     function hideMsg(){ msg.style.display = "none"; }
 
     function el(tag, attrs = {}, children = []){ const n=document.createElement(tag); Object.entries(attrs).forEach(([k,v])=>k==="class"?(n.className=v):v!=null&&n.setAttribute(k,v)); (Array.isArray(children)?children:[children]).forEach(c=>n.appendChild(typeof c==="string"?document.createTextNode(c):c)); return n; }
+    function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
 
     const todayISO = new Date().toISOString().slice(0,10);
     let CURRENT = [];
-    let YAML_URL_USED = null;
-
-    async function loadFromCandidates(){
-      const errors = [];
-      for (const url of YAML_CANDIDATES){
-        try{
-          const r = await fetch(url, {cache:"no-store"});
-          if (!r.ok) { errors.push(`${url} -> HTTP ${r.status}`); continue; }
-          const text = await r.text();
-          const data = jsyaml.load(text);
-          if (!Array.isArray(data)) { errors.push(`${url} -> not an array`); continue; }
-          YAML_URL_USED = url;
-          return data;
-        }catch(e){ errors.push(`${url} -> ${e.message}`); }
-      }
-      throw new Error("All YAML locations failed:\n" + errors.join("\n"));
-    }
-
-    function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
 
     async function loadMembers(){
-      try{
-        const yamlObj = await loadFromCandidates();
-        CURRENT = yamlObj.map(rec=>{
-          const terms=rec?.terms||[]; if(!terms.length) return null;
-          const t=terms[terms.length-1]; const type=(t.type||"").toLowerCase(); const end=t.end||"";
-          if (!((type==="rep"||type==="sen") && (!end || end >= todayISO))) return null;
-          return {
-            bioguide: rec?.id?.bioguide,
-            name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
-            state: t.state,
-            district: type==="rep" ? (t.district ?? "") : "",
-            chamber: type==="rep" ? "house" : "senate",
-            party: t.party || (rec?.party)||"",
-            norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
-          };
-        }).filter(Boolean);
-        hideMsg();
-        showMsg("Loaded members from: " + YAML_URL_USED, "warn");
-      }catch(e){
-        showMsg('Loading members failed:\n' + e.message, 'err');
-      }
+      const r = await fetch(YAML_URL, {cache:"no-store"});
+      if (!r.ok) throw new Error('Failed to load legislators-current.yaml ('+r.status+')');
+      const text = await r.text();
+      const yamlObj = jsyaml.load(text);
+      CURRENT = yamlObj.map(rec=>{
+        const terms=rec?.terms||[]; if(!terms.length) return null;
+        const t=terms[terms.length-1]; const type=(t.type||"").toLowerCase(); const end=t.end||"";
+        if (!((type==="rep"||type==="sen") && (!end || end >= todayISO))) return null;
+        return {
+          bioguide: rec?.id?.bioguide,
+          name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
+          state: t.state,
+          district: type==="rep" ? (t.district ?? "") : "",
+          chamber: type==="rep" ? "house" : "senate",
+          party: t.party || (rec?.party)||"",
+          norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
+        };
+      }).filter(Boolean);
+      showMsg("Loaded members: " + CURRENT.length, "warn");
     }
 
-    // FIPS incl. DC
     const FIPS_TO_ABBR = {"01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE","11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME","24":"MD","25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV","55":"WI","56":"WY"};
 
-    async function censusGeocode(address){
+    async function geocodeCensus(address){
       const params = new URLSearchParams({
         address,
-        benchmark: "Public_AR_Census2020",
-        vintage: "Current_Census2020",
+        benchmark: "Public_AR_Current",
+        vintage: "Current_Current",
         layers: "Congressional Districts",
         format: "json"
       });
       const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?${params.toString()}`;
+      debug("Census GET " + url);
       const r = await fetch(url);
-      if (!r.ok) throw new Error("Census Geocoder HTTP "+r.status);
+      if (!r.ok) throw new Error("Census HTTP "+r.status);
       const j = await r.json();
       const match = j?.result?.addressMatches?.[0];
-      if (!match) throw new Error("No address match found.");
+      if (!match) throw new Error("Census: no address match");
       const geogs = match?.geographies || {};
       const cdList = geogs["Congressional Districts"] || geogs["118th Congressional Districts"] || geogs["116th Congressional Districts"] || [];
       const cd = cdList[0] || {};
@@ -165,6 +146,43 @@
         districtStr = "AL";
       }
       return { state, district: districtStr };
+    }
+
+    async function geocodeOSM(address){
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`;
+      debug("OSM GET " + url);
+      const r = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      if (!r.ok) throw new Error("OSM HTTP "+r.status);
+      const j = await r.json();
+      if (!Array.isArray(j) || !j.length) throw new Error("OSM: no results");
+      const { lat, lon } = j[0];
+      if (!lat || !lon) throw new Error("OSM: missing lat/lon");
+      return { lat: parseFloat(lat), lon: parseFloat(lon) };
+    }
+
+    async function cdFromFCC(lat, lon){
+      const url = `https://geo.fcc.gov/api/census/block/find?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&format=json`;
+      debug("FCC GET " + url);
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("FCC HTTP "+r.status);
+      const j = await r.json();
+      const stateFips = j?.State?.FIPS || j?.state?.fips || j?.Block?.FIPS?.slice(0,2);
+      const cd = j?.CongressionalDistrict?.code || j?.congressional_district;
+      const state = FIPS_TO_ABBR[stateFips] || "";
+      let districtStr = "";
+      if (!cd || cd === "00") districtStr = "AL";
+      else districtStr = String(parseInt(cd,10)).padStart(2,"0");
+      if (!state) throw new Error("FCC: missing state");
+      return { state, district: districtStr };
+    }
+
+    async function resolveAddress(address){
+      // Try Census first
+      try { return await geocodeCensus(address); }
+      catch(e){ debug("Census failed: " + e.message); }
+      // Fallback: OSM -> FCC
+      const { lat, lon } = await geocodeOSM(address);
+      return await cdFromFCC(lat, lon);
     }
 
     function findMembers(where){
@@ -203,12 +221,13 @@
     }
 
     async function onGoClick(){
-      hideMsg();
+      hideMsg(); dbgpre.textContent = "";
       try {
         if (!CURRENT.length) await loadMembers();
         const address = addrEl.value.trim();
         if (!address) { showMsg("Enter an address.", "warn"); return; }
-        const where = await censusGeocode(address);
+        const where = await resolveAddress(address);
+        debug("Resolved district: " + JSON.stringify(where));
         const people = findMembers(where);
         if (!people.length) {
           showMsg('No current members found for '+where.state+'-'+where.district+'.', 'warn');
@@ -222,8 +241,8 @@
     goBtn.addEventListener('click', function(ev){ ev.preventDefault(); onGoClick(); });
     sampleBtn.addEventListener('click', function(ev){ ev.preventDefault(); addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; onGoClick(); });
 
-    // eager load members (non-blocking)
-    loadMembers();
+    // Eager load
+    loadMembers().catch(e=>showMsg(e.message,'err'));
   });
   </script>
 </body>
