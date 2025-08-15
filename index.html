@@ -9,7 +9,7 @@
     body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:24px; }
     h1 { font-size:1.8rem; margin:0 0 8px; }
     p.hint { color:var(--muted); margin-top:0; }
-    .wrap { display:grid; grid-template-columns: 1fr; gap:16px; max-width:900px; }
+    .wrap { display:grid; grid-template-columns: 1fr; gap:16px; max-width:1000px; }
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     input[type="text"] { padding:.6rem .8rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:280px; flex:1; }
     button { padding:.6rem .9rem; font-size:1rem; border:1px solid var(--border); border-radius:10px; background:#fff; cursor:pointer; }
@@ -27,7 +27,10 @@
     .msg.err  { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
     details { margin-top:8px; }
     summary { cursor:pointer; }
-    #debug pre { background:#fff; border:1px solid var(--border); padding:8px; border-radius:8px; overflow:auto; }
+    #debug pre { background:#fff; border:1px solid var(--border); padding:8px; border-radius:8px; overflow:auto; max-height:300px; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    label.select { display:block; font-size:.95rem; color:var(--muted); }
+    select { padding:.45rem .6rem; border:1px solid var(--border); border-radius:8px; font-size:1rem; width:100%; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
@@ -35,7 +38,8 @@
   <div class="wrap">
     <header>
       <h1>Demosthenes</h1>
-      <p class="hint">Type your address to find your two Senators and your Representative (Census Geocoder with FCC fallback).</p>
+      <p class="hint">Type your address to find your two Senators and your Representative.
+        If network blocks third‑party APIs, use the manual state/district selector.</p>
     </header>
 
     <section class="card">
@@ -46,15 +50,36 @@
       </div>
       <div class="settings" style="margin-top:8px;">
         Data base: <span class="mono" id="dataBaseLabel"></span>
+        · Optional API base: <span class="mono" id="apiBaseLabel"></span>
+        <div class="row" style="margin-top:6px">
+          <label>Set API base (optional): <input id="apiBase" type="text" placeholder="https://your-api.example.com" style="min-width:360px;" /></label>
+          <button id="saveApi">Save</button>
+          <button id="clearApi">Clear</button>
+        </div>
         <div id="msg" class="msg warn" style="display:none;"></div>
         <details id="debug"><summary>Debug info</summary><pre id="dbgpre"></pre></details>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Manual selector (no external calls)</h3>
+      <div class="grid2">
+        <label class="select">State
+          <select id="stateSel"></select>
+        </label>
+        <label class="select">District
+          <select id="distSel"></select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="goManual">Show my reps</button>
       </div>
     </section>
 
     <section id="results" class="result-grid"></section>
 
     <footer class="dim">
-      Data: Voteview + congress-legislators · Address lookup: U.S. Census Geocoder → FCC Block API (fallback) with OSM geocoding.
+      Data: Voteview + congress-legislators · Address resolver: optional server proxy → OSM fallback → manual selector.
     </footer>
   </div>
 
@@ -72,6 +97,7 @@
     const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
     const dataBaseLabel = document.getElementById("dataBaseLabel");
     dataBaseLabel.textContent = BASE;
+
     const YAML_URL = `${BASE}/legislators-current.yaml`;
 
     const addrEl = document.getElementById("addr");
@@ -81,15 +107,50 @@
     const msg = document.getElementById("msg");
     const dbgpre = document.getElementById("dbgpre");
 
+    const apiBaseInput = document.getElementById('apiBase');
+    const saveApiBtn = document.getElementById('saveApi');
+    const clearApiBtn = document.getElementById('clearApi');
+    const apiBaseLabel = document.getElementById('apiBaseLabel');
+
+    function getApiBase(){ return localStorage.getItem('DEMOS_API_BASE') || ''; }
+    function setApiUI(){ apiBaseInput.value = getApiBase(); apiBaseLabel.textContent = getApiBase() || '(none)'; }
+    saveApiBtn.onclick = ()=>{ localStorage.setItem('DEMOS_API_BASE', apiBaseInput.value.trim()); setApiUI(); };
+    clearApiBtn.onclick = ()=>{ localStorage.removeItem('DEMOS_API_BASE'); setApiUI(); };
+    setApiUI();
+
     function debug(line){ dbgpre.textContent += line + "\n"; }
-    function showMsg(text, kind="warn"){ msg.textContent = text; msg.className = "msg " + kind; msg.style.display = "block"; }
-    function hideMsg(){ msg.style.display = "none"; }
+    function showMsg(text, kind="warn"){ msg.textContent = text; msg.className = "msg " + kind; msg.style.display = 'block'; }
+    function hideMsg(){ msg.style.display = 'none'; }
 
     function el(tag, attrs = {}, children = []){ const n=document.createElement(tag); Object.entries(attrs).forEach(([k,v])=>k==="class"?(n.className=v):v!=null&&n.setAttribute(k,v)); (Array.isArray(children)?children:[children]).forEach(c=>n.appendChild(typeof c==="string"?document.createTextNode(c):c)); return n; }
     function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
 
     const todayISO = new Date().toISOString().slice(0,10);
     let CURRENT = [];
+    const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+    const AL_STATES = new Set(["AK","DE","DC","MT","ND","SD","VT","WY"]);
+
+    // Manual selector state
+    const stateSel = document.getElementById('stateSel');
+    const distSel = document.getElementById('distSel');
+    const goManual = document.getElementById('goManual');
+
+    function populateStates(){
+      stateSel.innerHTML = STATES.map(s=>`<option value="${s}">${s}</option>`).join("");
+    }
+    function populateDistrictsFor(state){
+      const maxByState = {
+        "AL":7,"AK":1,"AZ":9,"AR":4,"CA":52,"CO":8,"CT":5,"DE":1,"DC":1,"FL":28,"GA":14,"HI":2,"ID":2,"IL":17,"IN":9,"IA":4,"KS":4,"KY":6,"LA":6,"ME":2,"MD":8,"MA":9,"MI":13,"MN":8,"MS":4,"MO":8,"MT":2,"NE":3,"NV":4,"NH":2,"NJ":12,"NM":3,"NY":26,"NC":14,"ND":1,"OH":15,"OK":5,"OR":6,"PA":17,"RI":2,"SC":7,"SD":1,"TN":9,"TX":38,"UT":4,"VT":1,"VA":11,"WA":10,"WV":2,"WI":8,"WY":1
+      };
+      const n = maxByState[state] || 1;
+      const isAL = (n===1);
+      distSel.innerHTML = isAL ? `<option value="AL">At-Large</option>`
+                               : Array.from({length:n},(_,i)=>`<option value="${String(i+1).padStart(2,"0")}">${i+1}</option>`).join("");
+    }
+
+    populateStates();
+    stateSel.value = "DC"; populateDistrictsFor("DC");
+    stateSel.addEventListener('change', ()=> populateDistrictsFor(stateSel.value));
 
     async function loadMembers(){
       const r = await fetch(YAML_URL, {cache:"no-store"});
@@ -113,78 +174,6 @@
       showMsg("Loaded members: " + CURRENT.length, "warn");
     }
 
-    const FIPS_TO_ABBR = {"01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE","11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME","24":"MD","25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV","55":"WI","56":"WY"};
-
-    async function geocodeCensus(address){
-      const params = new URLSearchParams({
-        address,
-        benchmark: "Public_AR_Current",
-        vintage: "Current_Current",
-        layers: "Congressional Districts",
-        format: "json"
-      });
-      const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?${params.toString()}`;
-      debug("Census GET " + url);
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("Census HTTP "+r.status);
-      const j = await r.json();
-      const match = j?.result?.addressMatches?.[0];
-      if (!match) throw new Error("Census: no address match");
-      const geogs = match?.geographies || {};
-      const cdList = geogs["Congressional Districts"] || geogs["118th Congressional Districts"] || geogs["116th Congressional Districts"] || [];
-      const cd = cdList[0] || {};
-      const stateFips = cd.STATE || match?.addressComponents?.state_fips || "";
-      const state = FIPS_TO_ABBR[stateFips] || match?.addressComponents?.state || "";
-      let district = cd.CD118 || cd.CD116 || cd.CENTDIST || cd.BASENAME || "";
-      let districtStr = "";
-      if (!district || /at[-\s]?large/i.test(String(district))) {
-        districtStr = "AL";
-      } else if (/^\d+$/.test(String(district))) {
-        const n = parseInt(district, 10);
-        districtStr = n===0 ? "AL" : String(n).padStart(2,"0");
-      } else {
-        districtStr = "AL";
-      }
-      return { state, district: districtStr };
-    }
-
-    async function geocodeOSM(address){
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`;
-      debug("OSM GET " + url);
-      const r = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-      if (!r.ok) throw new Error("OSM HTTP "+r.status);
-      const j = await r.json();
-      if (!Array.isArray(j) || !j.length) throw new Error("OSM: no results");
-      const { lat, lon } = j[0];
-      if (!lat || !lon) throw new Error("OSM: missing lat/lon");
-      return { lat: parseFloat(lat), lon: parseFloat(lon) };
-    }
-
-    async function cdFromFCC(lat, lon){
-      const url = `https://geo.fcc.gov/api/census/block/find?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&format=json`;
-      debug("FCC GET " + url);
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("FCC HTTP "+r.status);
-      const j = await r.json();
-      const stateFips = j?.State?.FIPS || j?.state?.fips || j?.Block?.FIPS?.slice(0,2);
-      const cd = j?.CongressionalDistrict?.code || j?.congressional_district;
-      const state = FIPS_TO_ABBR[stateFips] || "";
-      let districtStr = "";
-      if (!cd || cd === "00") districtStr = "AL";
-      else districtStr = String(parseInt(cd,10)).padStart(2,"0");
-      if (!state) throw new Error("FCC: missing state");
-      return { state, district: districtStr };
-    }
-
-    async function resolveAddress(address){
-      // Try Census first
-      try { return await geocodeCensus(address); }
-      catch(e){ debug("Census failed: " + e.message); }
-      // Fallback: OSM -> FCC
-      const { lat, lon } = await geocodeOSM(address);
-      return await cdFromFCC(lat, lon);
-    }
-
     function findMembers(where){
       const {state, district} = where;
       const senators = CURRENT.filter(m => m.chamber==="senate" && m.state===state);
@@ -195,17 +184,18 @@
     }
 
     function renderResults(people){
+      const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || "https://WyattBrannon.github.io/demosthenes-data").replace(/\/+$/,"");
       res.innerHTML = "";
       if (!people.length) {
         res.appendChild(el("div",{class:"card"}, "No matches found."));
         return;
       }
-      const IMG_URL = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
+      const IMG_URL_MEMBER = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
       for (const p of people){
         const a = el("a",{href:`member.html?bioguide=${encodeURIComponent(p.bioguide)}`,"class":"btn"},"View report →");
-        const img = el("img",{class:"portrait",src:IMG_URL(p.bioguide),alt:p.name});
+        const img = el("img",{class:"portrait",src:IMG_URL_MEMBER(p.bioguide),alt:p.name});
         img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
-        const seat = p.chamber==="senate" ? `(${p.state})` : `(${p.state}-${(p.district===0||p.district===""||p.district===null)?"AL":String(p.district).padStart(2,"0")})`;
+        const seat = p.chamber==="senate" ? `(${p.state})` : `(${p.state}-${(p.district===0||p.district===""||p.district==null)?"AL":String(p.district).padStart(2,"0")})`;
         const card = el("div",{class:"card"},[
           el("div",{class:"member"},[
             img,
@@ -220,6 +210,50 @@
       }
     }
 
+    async function callServerResolve(address){
+      const apiBase = getApiBase();
+      if (!apiBase) throw new Error('No DEMOS_API_BASE configured');
+      const url = apiBase.replace(/\/+$/,"") + '/resolve?address=' + encodeURIComponent(address);
+      debug('API GET ' + url);
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('API HTTP ' + r.status);
+      const j = await r.json();
+      if (!j || !j.state || !j.district) throw new Error('API invalid payload');
+      return { state: j.state, district: j.district };
+    }
+
+    async function resolveAddress(address){
+      // 1) Try user-provided server API (if configured)
+      try {
+        if (getApiBase()) {
+          const res = await callServerResolve(address);
+          debug('Resolved via API: ' + JSON.stringify(res));
+          return res;
+        }
+      } catch (e) {
+        debug('API failed: ' + e.message);
+      }
+      // 2) Fallback: quick OSM geocode and simple guess (best-effort; can be wrong in multi-district states)
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`;
+        debug("OSM GET " + url);
+        const r = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+        if (!r.ok) throw new Error("OSM HTTP "+r.status);
+        const j = await r.json();
+        if (!Array.isArray(j) || !j.length) throw new Error("OSM: no results");
+        const comp = j[0].address || {};
+        const state = (comp.state_code || comp.state || "").toString().toUpperCase().slice(0,2);
+        // As we can't reliably get CD client-side on your network, we default to AL for AL states else show manual selector
+        const district = AL_STATES.has(state) ? "AL" : "";
+        if (state && district) return { state, district };
+        debug('OSM fallback needs manual selection');
+      } catch (e) {
+        debug('OSM fallback failed: ' + e.message);
+      }
+      // 3) Require manual selection
+      throw new Error('Automatic resolver unavailable on this network. Use the manual state/district selector below.');
+    }
+
     async function onGoClick(){
       hideMsg(); dbgpre.textContent = "";
       try {
@@ -227,11 +261,8 @@
         const address = addrEl.value.trim();
         if (!address) { showMsg("Enter an address.", "warn"); return; }
         const where = await resolveAddress(address);
-        debug("Resolved district: " + JSON.stringify(where));
         const people = findMembers(where);
-        if (!people.length) {
-          showMsg('No current members found for '+where.state+'-'+where.district+'.', 'warn');
-        }
+        if (!people.length) showMsg('No current members found for '+where.state+'-'+where.district+'.', 'warn');
         renderResults(people);
       } catch (e){
         showMsg(e.message, "err");
@@ -240,6 +271,14 @@
 
     goBtn.addEventListener('click', function(ev){ ev.preventDefault(); onGoClick(); });
     sampleBtn.addEventListener('click', function(ev){ ev.preventDefault(); addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; onGoClick(); });
+
+    goManual.addEventListener('click', function(){
+      hideMsg();
+      const state = stateSel.value;
+      const district = distSel.value || "AL";
+      const people = findMembers({state, district});
+      renderResults(people);
+    });
 
     // Eager load
     loadMembers().catch(e=>showMsg(e.message,'err'));
