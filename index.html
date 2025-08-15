@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Demosthenes — House DW-NOMINATE</title>
+  <title>Demosthenes — Members & DW-NOMINATE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; }
@@ -19,6 +19,7 @@
     .pill { display:inline-block; min-width:80px; text-align:center; padding:2px 8px; border-radius:999px; }
     .pill.red { background:#fee2e2; }
     .pill.blue { background:#dbeafe; }
+    .pill.gray { background:#e5e7eb; }
     .dim { color:var(--muted); }
     .footer { margin-top:28px; font-size:.9rem; color:var(--muted); }
   </style>
@@ -27,17 +28,17 @@
 </head>
 <body>
   <h1>Demosthenes</h1>
-  <p class="hint">Current <b>House</b> members and their DW-NOMINATE (Dim1) scores.</p>
+  <p class="hint">Current <b>House & Senate</b> members with DW-NOMINATE scores (Dim1 & Dim2).</p>
 
   <div class="controls">
     <input id="search" type="search" placeholder="Search by name, bioguide, party, state…" />
     <select id="picker">
-      <option value="">— choose a representative —</option>
+      <option value="">— choose a member —</option>
     </select>
     <span id="count" class="dim"></span>
   </div>
 
-  <div id="card" class="card">Select a representative…</div>
+  <div id="card" class="card">Select a member…</div>
 
   <div class="footer">
     Data: Voteview + congress-legislators · Photos: unitedstates/images · Served from <span class="mono">demosthenes-data</span>.
@@ -45,15 +46,16 @@
 
   <script>
     // ------- Config -------
-    const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
-    const INDEX_URL = `${DATA_BASE}/indexes/members_index.tsv`;
-    const YAML_URL  = `${DATA_BASE}/legislators-current.yaml`;
-    const IMG_URL   = (bioguide) => `${DATA_BASE}/images/${bioguide}.jpg`;
+    const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // change username if needed
     const todayISO = new Date().toISOString().slice(0,10);
 
-    // allow local override
+    // allow local override for testing:
     const override = localStorage.getItem("DEMOS_DATA_BASE");
     const BASE = override && /^https?:\/\//.test(override) ? override.replace(/\/+$/,"") : DATA_BASE;
+
+    const INDEX_URL = `${BASE}/indexes/members_index.tsv`;
+    const YAML_URL  = `${BASE}/legislators-current.yaml`;
+    const IMG_URL   = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
 
     // ------- utils -------
     function el(tag, attrs = {}, children = []) {
@@ -73,23 +75,54 @@
         return o;
       });
     }
-    function partyPill(p){ const u=(p||"").toUpperCase(); const cls=u.startsWith("D")?"blue":u.startsWith("R")?"red":""; return `<span class="pill ${cls}">${u||"?"}</span>`; }
     function formatNameFromYaml(rec){ const nm=rec?.name||{}; return [nm.first,nm.middle,nm.last].filter(Boolean).join(" "); }
+    function lastNameFromYaml(rec){ return (rec?.name?.last || "").toString(); }
+    function partyCodeToLetter(code){
+      const c = (code||"").toString().trim();
+      // Common Voteview codes
+      if (c === "100") return "D";
+      if (c === "200") return "R";
+      if (c === "328" || c === "331" || c==="329") return "I"; // various independents
+      return ""; // unknown
+    }
+    function partyBadge(partyName, partyCode){
+      const label = (partyName || "").trim() || partyCodeToLetter(partyCode) || "?";
+      const up = label.toUpperCase();
+      const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
+      return `<span class="pill ${cls}">${up}</span>`;
+    }
+
+    // Seat text like (AZ-08) for House or (AZ) for Senate
+    function seatText(chamber, stateAbbrev, district){
+      if ((chamber||"").toLowerCase()==="house" || (chamber||"").toLowerCase()==="rep") {
+        // some datasets store district as number or string
+        const d = (district===0 || district==="0") ? "AL" : (district||"").toString().padStart(2,"0"); // 0 -> At-Large
+        return `(${stateAbbrev || "??"}-${d})`;
+      } else {
+        return `(${stateAbbrev || "??"})`;
+      }
+    }
 
     // ------- render -------
     function renderMemberCard(target, info){
-      if(!info){ target.textContent="Select a representative…"; return; }
-      const dw = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
-      const dwStr = (dw!=null && isFinite(dw)) ? dw.toFixed(3) : "N/A";
+      if(!info){ target.textContent="Select a member…"; return; }
+      const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
+      const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
+
+      // allow for a second dimension field if present in your index
+      const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
+      const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
+      const dim2Str = (dim2!=null && isFinite(dim2)) ? dim2.toFixed(3) : "N/A";
 
       target.innerHTML="";
       const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
       const meta = el("div",{},[
-        el("h3",{},`${info.name||info.bioguide_id} ${partyPill(info.party_name||info.party_code)}`),
+        el("h3",{},`${info.name||info.bioguide_id} ${partyBadge(info.party_name, info.party_code)} ${seatText(info.chamber, info.state_abbrev, info.district)}`),
         el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
-        el("div",{class:"kv"} ,`State: ${info.state_abbrev||"?"}`),
-        el("div",{class:"kv"} ,`DW-NOMINATE (Dim1): ${dwStr}`)
+        el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
+        el("div",{class:"kv"} ,`DW-NOMINATE Dim1: ${dim1Str}`),
+        el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`)
       ]);
       target.appendChild(el("div",{class:"row"},[img,meta]));
     }
@@ -103,76 +136,104 @@
 
       out.textContent="Loading data…";
 
-      // 1) Load current legislators YAML and build a set of CURRENT HOUSE bioguides
-      const yamlText = await fetchText(`${BASE}/legislators-current.yaml`);
+      // 1) Load current legislators YAML and build sets/maps
+      const yamlText = await fetchText(YAML_URL);
       const yamlObj = jsyaml.load(yamlText);
-      const currentHouseSet = new Set();
+
+      const currentSet = new Set(); // bioguides for current House+Senate
       const nameByBioguide = {};
+      const lastByBioguide = {};
+      const seatByBioguide = {}; // { chamber, state_abbrev, district? }
+
       for(const rec of yamlObj){
         const terms = rec?.terms||[];
         if(!terms.length) continue;
-        const last = terms[terms.length-1];
-        const type = (last.type||"").toLowerCase();
-        const end  = last.end || "";
+        const lastTerm = terms[terms.length-1];
+        const type = (lastTerm.type||"").toLowerCase(); // "rep" or "sen"
+        const end  = lastTerm.end || "";
         const bid  = rec?.id?.bioguide;
-        if(bid && type==="rep" && (!end || end >= todayISO)){
-          currentHouseSet.add(bid);
+        if(!bid) continue;
+        if ((type==="rep" || type==="sen") && (!end || end >= todayISO)){
+          currentSet.add(bid);
           nameByBioguide[bid] = formatNameFromYaml(rec);
+          lastByBioguide[bid] = lastNameFromYaml(rec);
+          seatByBioguide[bid] = {
+            chamber: type==="rep" ? "House" : "Senate",
+            state_abbrev: lastTerm.state,
+            district: type==="rep" ? (lastTerm.district ?? "") : ""
+          };
         }
       }
 
-      // 2) Load DW-NOM index (TSV) and filter to current House bioguides
-      const tsv = await fetchTSV(`${BASE}/indexes/members_index.tsv`);
+      // 2) Load DW-NOM index (TSV) and filter to current members (both chambers)
+      const tsv = await fetchTSV(INDEX_URL);
 
-      // dedupe by bioguide, prefer a row with a DW-NOM value
+      // dedupe by bioguide, prefer a row with a Dim1 value
       const byBioguide = new Map();
       for(const r of tsv){
         const bid = r.bioguide_id;
-        if(!currentHouseSet.has(bid)) continue; // filter to 435 current reps
+        if(!currentSet.has(bid)) continue;
         const have = byBioguide.get(bid);
-        const thisHasNom = r.dw_nominate !== "";
-        if(!have) {
-          byBioguide.set(bid, r);
-        } else if(!have.dw_nominate && thisHasNom) {
-          byBioguide.set(bid, r);
-        }
+        const thisHasDim1 = r.dw_nominate !== "";
+        if(!have) { byBioguide.set(bid, r); }
+        else if(!have.dw_nominate && thisHasDim1) { byBioguide.set(bid, r); }
       }
 
-      const rows = Array.from(byBioguide.values()).map(r => ({
-        ...r,
-        name: nameByBioguide[r.bioguide_id] || r.bioguide_id
-      }));
+      const rows = Array.from(byBioguide.values()).map(r => {
+        const seat = seatByBioguide[r.bioguide_id] || {};
+        return {
+          ...r,
+          name: nameByBioguide[r.bioguide_id] || r.bioguide_id,
+          last_name: lastByBioguide[r.bioguide_id] || (nameByBioguide[r.bioguide_id]||"").split(" ").slice(-1)[0] || "",
+          chamber: seat.chamber || r.chamber || "",
+          state_abbrev: seat.state_abbrev || r.state_abbrev || "",
+          district: seat.district ?? r.district ?? ""
+          // dim2 will be read if present: r.dw_nominate2 / r.nominate_dim2
+        };
+      });
 
-      // 3) UI: search + dropdown
+      // 3) UI: search + dropdown, sorted by LAST name
       function matches(d,q){
         if(!q) return true;
         const s=q.toLowerCase();
         return (
           (d.name||"").toLowerCase().includes(s) ||
+          (d.last_name||"").toLowerCase().includes(s) ||
           (d.bioguide_id||"").toLowerCase().includes(s) ||
           (d.party_name||d.party_code||"").toLowerCase().includes(s) ||
           (d.state_abbrev||"").toLowerCase().includes(s)
         );
       }
       function populate(q=""){
-        const list = rows.filter(d=>matches(d,q)).sort((a,b)=> a.name.localeCompare(b.name));
-        picker.innerHTML = '<option value="">— choose a representative —</option>';
+        const list = rows
+          .filter(d=>matches(d,q))
+          .sort((a,b)=>{
+            const la=a.last_name.toLowerCase(), lb=b.last_name.toLowerCase();
+            if(la<lb) return -1; if(la>lb) return 1;
+            return a.name.localeCompare(b.name);
+          });
+
+        picker.innerHTML = '<option value="">— choose a member —</option>';
         for(const d of list){
-          const dw = d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A";
-          const label = `${d.name} · ${d.party_name || d.party_code || "?"} ${d.state_abbrev || "??"} · DW-NOM: ${dw}`;
+          const dim1 = d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A";
+          const dim2Raw = d.dw_nominate2 ?? d.nominate_dim2 ?? "";
+          const dim2 = dim2Raw!=="" ? Number(dim2Raw).toFixed(3) : "N/A";
+          const party = (d.party_name || partyCodeToLetter(d.party_code) || "?");
+          const seat = seatText(d.chamber, d.state_abbrev, d.district);
+          const label = `${d.last_name.toUpperCase()}, ${d.name.replace(new RegExp(d.last_name+'$'),'').trim()} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
           picker.appendChild(el("option",{value:d.bioguide_id},label));
         }
         countEl.textContent = `${list.length} shown`;
       }
 
-      search.addEventListener("input",()=>populate(search.value));
+      document.getElementById("search").addEventListener("input",()=>populate(document.getElementById("search").value));
       picker.addEventListener("change",()=>{
         const rec = rows.find(r=>r.bioguide_id===picker.value);
         renderMemberCard(out, rec);
       });
 
       populate("");
-      out.textContent="Select a representative…";
+      out.textContent="Select a member…";
     })().catch(err=>{
       document.getElementById("card").textContent = `Failed to load: ${err}`;
     });
