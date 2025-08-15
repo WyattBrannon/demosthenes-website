@@ -2,412 +2,245 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Demosthenes — Members & DW-NOMINATE</title>
+  <title>Demosthenes — Find Your Representatives</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; }
+    :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; --accent:#2563eb; }
     body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:24px; }
-    h1 { font-size:1.6rem; margin-bottom:8px; }
+    h1 { font-size:1.8rem; margin:0 0 8px; }
     p.hint { color:var(--muted); margin-top:0; }
-    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 16px 0 8px; }
-    input[type="search"], select { padding:.55rem .75rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:260px; }
-    .inline-select { padding:0 .25rem; font-size:.95rem; border:1px solid var(--border); border-radius:6px; background:#fff; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; }
-    .row { display:flex; gap:16px; align-items:flex-start; }
-    img.portrait { width:130px; height:auto; border-radius:10px; border:1px solid var(--border); background:#fff; object-fit:cover; }
-    .kv { margin:4px 0; }
+    .wrap { display:grid; grid-template-columns: 1fr; gap:16px; max-width:900px; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    input[type="search"], input[type="text"] { padding:.6rem .8rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:280px; flex:1; }
+    button { padding:.6rem .9rem; font-size:1rem; border:1px solid var(--border); border-radius:10px; background:#fff; cursor:pointer; }
+    button.primary { background:var(--accent); color:white; border-color:var(--accent); }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+    .settings { font-size:.95rem; color:var(--muted); }
+    .result-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+    .member { display:flex; gap:12px; align-items:flex-start; }
+    img.portrait { width:72px; height:96px; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:#fff; }
+    .pill { display:inline-block; min-width:22px; text-align:center; padding:1px 6px; border-radius:999px; font-weight:600; margin-left:6px; }
+    .pill.red { background:#fee2e2; color:#991b1b; } .pill.blue { background:#dbeafe; color:#1e3a8a; } .pill.gray { background:#e5e7eb; color:#374151; }
+    a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
     .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-    .pill { display:inline-block; min-width:24px; text-align:center; padding:2px 8px; border-radius:999px; font-weight:600; margin-left:8px; }
-    .pill.red { background:#fee2e2; color:#991b1b; }
-    .pill.blue { background:#dbeafe; color:#1e3a8a; }
-    .pill.gray { background:#e5e7eb; color:#374151; }
     .dim { color:var(--muted); }
-    .legend { margin-top:12px; color:var(--muted); font-size:.95rem; line-height:1.35; }
-    .ideo-wrap { margin-top:8px; }
-    .ideo-scale {
-      position: relative;
-      height: 12px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: linear-gradient(90deg, #3b82f6 0%, #ef4444 100%);
-      overflow: visible;
-    }
-    .ideo-marker {
-      position: absolute; top: 50%;
-      width: 10px; height: 10px; background: #111; border-radius: 2px;
-      transform: translate(-50%, -50%);
-      box-shadow: 0 0 0 2px rgba(255,255,255,.9);
-    }
-    .ideo-labels { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); margin-top:4px; }
-    .footer { margin-top:28px; font-size:.9rem; color:var(--muted); }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <h1>Demosthenes</h1>
-  <p class="hint">Current <b>House & Senate</b> members with DW-NOMINATE scores (Dim1 & Dim2).</p>
+  <div class="wrap">
+    <header>
+      <h1>Demosthenes</h1>
+      <p class="hint">Type your address to find your two Senators and your Representative. Then view detailed reports.</p>
+    </header>
 
-  <div class="controls">
-    <input id="search" type="search" placeholder="Search by name, bioguide, party, state…" />
-    <select id="picker">
-      <option value="">— choose a member —</option>
-    </select>
-    <span id="count" class="dim"></span>
-  </div>
+    <section class="card">
+      <div class="row">
+        <input id="addr" type="text" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC" />
+        <button class="primary" id="go">Find my reps</button>
+        <button id="useLoc">Use my location</button>
+      </div>
+      <div class="settings" style="margin-top:8px;">
+        Data source: <span class="mono" id="dataBaseLabel"></span> ·
+        Civic API key: <span id="keyState" class="mono">not set</span>
+        <br/>
+        <label>Set Civic API key: <input id="civicKey" type="text" placeholder="AIza... (stored locally)" style="min-width:300px;" /></label>
+        <button id="saveKey">Save</button>
+        <button id="clearKey">Clear</button>
+      </div>
+    </section>
 
-  <div id="card" class="card">Select a member…</div>
+    <section id="results" class="result-grid"></section>
 
-  <div class="legend">
-    <b>What do these mean?</b><br/>
-    <b>Dim1</b> ≈ liberal ↔ conservative ideology (≈ −1 left, +1 right). The black square marks the member’s Dim1 on the blue→red bar.<br/>
-    <b>Dim2</b> captures secondary cleavages (e.g., regional/issue splits). It’s often near 0 in modern Congresses.
-  </div>
-
-  <div class="footer">
-    Data: Voteview + congress-legislators · Photos: unitedstates/images · Served from <span class="mono">demosthenes-data</span>.
+    <footer class="dim">
+      Data: Voteview + congress-legislators · Address lookup: Google Civic Information API.
+    </footer>
   </div>
 
   <script>
-    // ------- Config -------
-    const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data"; // change username if needed
-    const todayISO = new Date().toISOString().slice(0,10);
-    const override = localStorage.getItem("DEMOS_DATA_BASE");
-    const BASE = override && /^https?:\/\//.test(override) ? override.replace(/\/+$/,"") : DATA_BASE;
-
-    const INDEX_URL = `${BASE}/indexes/members_index.tsv`;
+    // ---------- Config ----------
+    const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
+    const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
     const YAML_URL  = `${BASE}/legislators-current.yaml`;
     const IMG_URL   = (bioguide) => `${BASE}/images/${bioguide}.jpg`;
 
-    // ------- utils -------
-    function el(tag, attrs = {}, children = []) {
+    // ---------- DOM ----------
+    const addrEl = document.getElementById("addr");
+    const goBtn = document.getElementById("go");
+    const useLocBtn = document.getElementById("useLoc");
+    const res = document.getElementById("results");
+    const civicKeyEl = document.getElementById("civicKey");
+    const saveKeyBtn = document.getElementById("saveKey");
+    const clearKeyBtn = document.getElementById("clearKey");
+    const keyState = document.getElementById("keyState");
+    const dataBaseLabel = document.getElementById("dataBaseLabel");
+    dataBaseLabel.textContent = BASE;
+
+    // ---------- Helpers ----------
+    function partyPill(party){
+      const up = (party||"").toUpperCase();
+      const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
+      return `<span class="pill ${cls}">${up.startsWith("D")?"D":up.startsWith("R")?"R":"I"}</span>`;
+    }
+    function textNode(s){ return document.createTextNode(s); }
+    function el(tag, attrs = {}, children = []){
       const n = document.createElement(tag);
       Object.entries(attrs).forEach(([k,v]) => k==="class" ? (n.className=v) : v!=null && n.setAttribute(k,v));
       (Array.isArray(children)?children:[children]).forEach(c => n.appendChild(typeof c==="string" ? document.createTextNode(c) : c));
       return n;
     }
-    async function fetchText(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("Fetch failed "+url); return r.text(); }
-    async function fetchTSV(url){
-      const text = await fetchText(url);
-      const lines = text.trim().split(/\r?\n/);
-      const headers = lines.shift().split("\t");
-      return lines.map(line => {
-        const cols = line.split("\t"); const o = {};
-        headers.forEach((h,i)=>o[h]=cols[i]??"");
-        return o;
-      });
+    function lastTermCurrent(rec, todayISO){
+      const terms = rec?.terms || [];
+      if (!terms.length) return null;
+      const t = terms[terms.length-1];
+      if ((t.type==="rep" || t.type==="sen") && (!t.end || t.end >= todayISO)) return t;
+      return null;
     }
-    async function fetchJSON(url){
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error("Fetch failed "+url);
+    function normalizeName(s){ return (s||"").toLowerCase().replace(/[^a-z\s]/g,"").replace(/\s+/g," ").trim(); }
+
+    // ---------- Load current members ----------
+    const todayISO = new Date().toISOString().slice(0,10);
+    let CURRENT = []; // {bioguide, name, state, district, chamber, norm}
+    (async function loadMembers(){
+      const yamlText = await (await fetch(YAML_URL,{cache:"no-store"})).text();
+      const yamlObj = jsyaml.load(yamlText);
+      const out = [];
+      for(const rec of yamlObj){
+        const t = lastTermCurrent(rec, todayISO);
+        if(!t) continue;
+        out.push({
+          bioguide: rec?.id?.bioguide,
+          name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
+          last: rec?.name?.last || "",
+          state: t.state,
+          district: t.type==="rep" ? (t.district ?? "") : "",
+          chamber: t.type==="rep" ? "house" : "senate",
+          party: (t.party || rec?.party || ""),
+          norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
+        });
+      }
+      CURRENT = out;
+    })();
+
+    // ---------- Civic API ----------
+    function civicKey(){ return localStorage.getItem("GOOGLE_CIVIC_API_KEY") || ""; }
+    function setKeyUI(){
+      civicKeyEl.value = civicKey();
+      keyState.textContent = civicKey() ? "● saved" : "not set";
+    }
+    setKeyUI();
+    saveKeyBtn.onclick = ()=>{ localStorage.setItem("GOOGLE_CIVIC_API_KEY", civicKeyEl.value.trim()); setKeyUI(); };
+    clearKeyBtn.onclick = ()=>{ localStorage.removeItem("GOOGLE_CIVIC_API_KEY"); setKeyUI(); };
+
+    async function fetchCivic(address){
+      const key = civicKey();
+      if (!key) throw new Error("No Civic API key set. Paste it above and click Save.");
+      const params = new URLSearchParams({
+        address,
+        levels: "country",
+        roles: "legislatorUpperBody,legislatorLowerBody",
+        key
+      });
+      const url = `https://civicinfo.googleapis.com/civicinfo/v2/representatives?${params.toString()}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("Civic API error: "+r.status);
       return r.json();
     }
-    function formatNameFromYaml(rec){ const nm=rec?.name||{}; return [nm.first,nm.middle,nm.last].filter(Boolean).join(" "); }
-    function lastNameFromYaml(rec){ return (rec?.name?.last || "").toString(); }
-    function partyCodeToLetter(code){
-      const c = (code||"").toString().trim();
-      if (c === "100") return "D";
-      if (c === "200") return "R";
-      if (["328","329","331"].includes(c)) return "I";
-      return "";
-    }
-    function partyPillElem(partyName, partyCode){
-      const label = (partyName || "").trim() || partyCodeToLetter(partyCode) || "?";
-      const up = label.toUpperCase();
-      const cls = up.startsWith("D") ? "blue" : up.startsWith("R") ? "red" : "gray";
-      return el("span",{class:`pill ${cls}`}, up);
-    }
-    function seatText(chamber, stateAbbrev, district){
-      const c = (chamber||"").toLowerCase();
-      if (c==="house" || c==="rep") {
-        const d = (district===0 || district==="0") ? "AL" : (district||"").toString().padStart(2,"0");
-        return `(${stateAbbrev || "??"}-${d})`;
-      } else {
-        return `(${stateAbbrev || "??"})`;
-      }
-    }
-    function dim1ToPercent(dim1){
-      if (dim1 == null || !isFinite(dim1)) return null;
-      const p = ((dim1 + 1) / 2) * 100;
-      return Math.max(0, Math.min(100, p));
-    }
-    function escapeRegExp(s){
-      return (s||"").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // FIX: proper escaping
+
+    function parseDivision(divId){
+      // e.g., "ocd-division/country:us/state:az/cd:1"
+      const mState = divId.match(/state:([a-z]{2})/i);
+      const mCd = divId.match(/cd:(\d+)/i);
+      return {
+        state: mState ? mState[1].toUpperCase() : "",
+        district: mCd ? mCd[1] : ""
+      };
     }
 
-    // Percentile helpers
-    function percentileBase(dim1, cohort){
-      if (dim1 == null || !isFinite(dim1) || !cohort.length) return null;
-      let less = 0, equal = 0;
-      for (const v of cohort) {
-        if (v < dim1) less++;
-        else if (v === dim1) equal++;
+    function matchToBioguide(name, division, chamberGuess){
+      // Prefer exact state & district match; fall back to name+state
+      const norm = normalizeName(name);
+      const state = division.state;
+      const district = division.district;
+      let pool = CURRENT.filter(m => m.state===state && m.chamber===chamberGuess);
+      if (chamberGuess==="house" && district) {
+        const exact = pool.find(m => String(m.district) === String(district));
+        if (exact) return exact;
       }
-      return ((less + 0.5*equal) / cohort.length) * 100; // % to member's left
-    }
-    function cohortLabel(key, partyWord){
-      if (key==="house") return "the House";
-      if (key==="senate") return "the Senate";
-      if (key==="party") return partyWord || "their party";
-      return "Congress";
+      // fallback: fuzzy by name within state & chamber
+      const byName = pool.find(m => m.norm === norm) || pool.find(m => m.norm.includes(norm) || norm.includes(m.norm));
+      if (byName) return byName;
+      // last resort: any name match across all
+      return CURRENT.find(m => m.norm === norm) || null;
     }
 
-    // ------- Maverick fetcher -------
-    const MAV_CACHE = { map: null, per: new Map() };
-    async function fetchMaverick(bioguide){
-      if (MAV_CACHE.map === null) {
-        try { MAV_CACHE.map = await fetchJSON(`${BASE}/indexes/maverick_counts.json`); }
-        catch { MAV_CACHE.map = false; }
+    function renderResults(people){
+      res.innerHTML = "";
+      if (!people.length) {
+        res.appendChild(el("div",{class:"card"}, "No matches found."));
+        return;
       }
-      if (MAV_CACHE.map && MAV_CACHE.map[bioguide]) return MAV_CACHE.map[bioguide];
-      if (MAV_CACHE.per.has(bioguide)) return MAV_CACHE.per.get(bioguide);
+      for (const p of people){
+        const a = el("a",{href:`member.html?bioguide=${encodeURIComponent(p.bioguide)}`,"class":"btn"},"View report →");
+        const img = el("img",{class:"portrait",src:IMG_URL(p.bioguide),alt:p.name});
+        img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
+        const seat = p.chamber==="senate" ? `(${p.state})` : `(${p.state}-${p.district?String(p.district).padStart(2,"0"):"AL"})`;
+        const card = el("div",{class:"card"},[
+          el("div",{class:"member"},[
+            img,
+            el("div",{},[
+              el("div",{},[document.createTextNode(p.name+" "), (function(){const d=document.createElement("span"); d.innerHTML=partyPill(p.party); return d;})()]),
+              el("div",{class:"dim"}, `${p.chamber==="senate"?"Senator":"Representative"} ${seat}`),
+              a
+            ])
+          ])
+        ]);
+        res.appendChild(card);
+      }
+    }
+
+    // ---------- Actions ----------
+    goBtn.onclick = async () => {
       try {
-        const obj = await fetchJSON(`${BASE}/indexes/maverick/${bioguide}.json`);
-        MAV_CACHE.per.set(bioguide, obj);
-        return obj;
-      } catch {
-        MAV_CACHE.per.set(bioguide, null);
-        return null;
-      }
-    }
-
-    // ------- state -------
-    let ROWS = []; // merged current members (both chambers)
-    let COHORT = { both: [], house: [], senate: [], party: { D: [], R: [], I: [] } };
-    let selectedBioguide = null;
-    let selectedCohort = 'both'; // 'both' | 'house' | 'senate' | 'party'
-
-    function partyKeyFromRow(r){
-      const name = (r.party_name||"").toUpperCase();
-      if (name.startsWith("D")) return "D";
-      if (name.startsWith("R")) return "R";
-      const code = (r.party_code||"").toString();
-      if (code==="100") return "D";
-      if (code==="200") return "R";
-      return "I";
-    }
-
-    // ------- render -------
-    async function renderMemberCard(target, info){
-      if(!info){ target.textContent="Select a member…"; return; }
-
-      const memberPartyKey = partyKeyFromRow(info);
-      const partyWord = memberPartyKey==="D" ? "Democrats" : memberPartyKey==="R" ? "Republicans" : "Independents";
-
-      const dim1 = info.dw_nominate!=="" ? Number(info.dw_nominate) : null;
-      const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
-
-      const cohortArray = (selectedCohort==="house") ? COHORT.house
-                         : (selectedCohort==="senate") ? COHORT.senate
-                         : (selectedCohort==="party") ? (COHORT.party[memberPartyKey] || [])
-                         : COHORT.both;
-
-      const basePct = (dim1!=null && isFinite(dim1)) ? percentileBase(dim1, cohortArray) : null;
-      const shownPct = basePct==null ? null : (dim1 >= 0 ? basePct : (100 - basePct));
-
-      const rawDim2 = info.dw_nominate2 ?? info.nominate_dim2 ?? "";
-      const dim2 = rawDim2!=="" ? Number(rawDim2) : null;
-      const dim2Str = (dim2!=null && isFinite(dim2)) ? dim2.toFixed(3) : "N/A";
-
-      target.innerHTML="";
-      const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
-      img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
-
-      const header = el("h3");
-      header.appendChild(document.createTextNode(info.name || info.bioguide_id));
-      header.appendChild(partyPillElem(info.party_name, info.party_code));
-      header.appendChild(document.createTextNode(` ${seatText(info.chamber, info.state_abbrev, info.district)}`));
-
-      const p = dim1ToPercent(dim1);
-      const bar = el("div",{class:"ideo-wrap"},[
-        el("div",{class:"ideo-scale"}, p==null ? [] : el("div",{class:"ideo-marker", style:`left:${p}%;`}))
-      ]);
-      const axis = el("div",{class:"ideo-labels"},[
-        el("span",{}, "−1 (liberal)"),
-        el("span",{}, "0"),
-        el("span",{}, "+1 (conservative)")
-      ]);
-
-      const dim1Line = el("div",{class:"kv"});
-      dim1Line.appendChild(document.createTextNode(`DW-NOMINATE Dim1: ${dim1Str}`));
-      if (shownPct != null) {
-        dim1Line.appendChild(document.createTextNode(` (to the ${dim1>=0?"right":"left"} of ${Math.round(shownPct)}% of `));
-        const sel = el("select",{class:"inline-select", title:"Choose cohort"});
-        sel.appendChild(el("option",{value:"both"},"Congress"));
-        sel.appendChild(el("option",{value:"house"},"the House"));
-        sel.appendChild(el("option",{value:"senate"},"the Senate"));
-        sel.appendChild(el("option",{value:"party"} ,partyWord));
-        sel.value = selectedCohort;
-        sel.addEventListener("change",()=>{
-          selectedCohort = sel.value;
-          renderMemberCard(target, info);
-        });
-        dim1Line.appendChild(sel);
-        dim1Line.appendChild(document.createTextNode(`)`));
-      }
-
-      const maverickLine = el("div",{class:"kv"}, "Maverick votes: …");
-
-      const meta = el("div",{},[
-        header,
-        el("div",{class:"kv"} ,`Bioguide: ${info.bioguide_id}`),
-        el("div",{class:"kv"} ,`Chamber: ${info.chamber || "?"}`),
-        dim1Line,
-        bar,
-        axis,
-        el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`),
-        maverickLine
-      ]);
-
-      target.appendChild(el("div",{class:"row"},[img,meta]));
-
-      try {
-        const mv = await fetchMaverick(info.bioguide_id);
-        if (mv && (mv.maverick_votes!=null) && (mv.total_votes!=null)) {
-          const pct = mv.total_votes > 0 ? Math.round((mv.maverick_votes / mv.total_votes) * 100) : 0;
-          const windowTxt = mv.window ? ` in last ${mv.window} votes` : "";
-          maverickLine.textContent = `Maverick votes: ${mv.maverick_votes} of ${mv.total_votes} (${pct}%)${windowTxt}`;
-        } else if (mv && mv.maverick_rate!=null && mv.window!=null) {
-          const pct = Math.round(mv.maverick_rate * 100);
-          maverickLine.textContent = `Maverick votes: ${pct}% in last ${mv.window} votes`;
-        } else {
-          maverickLine.textContent = "Maverick votes: N/A";
+        res.innerHTML = "";
+        const address = addrEl.value.trim();
+        if (!address) { alert("Enter an address."); return; }
+        const data = await fetchCivic(address);
+        const officials = data.officials || [];
+        const offices = data.offices || [];
+        const results = [];
+        for (const office of offices){
+          const div = parseDivision(office.divisionId||"");
+          const isSen = (office.roles||[]).includes("legislatorUpperBody");
+          const isRep = (office.roles||[]).includes("legislatorLowerBody");
+          const chamber = isSen ? "senate" : isRep ? "house" : "";
+          if (!chamber) continue;
+          for (const idx of (office.officialIndices||[])){
+            const off = officials[idx];
+            if (!off) continue;
+            const match = matchToBioguide(off.name, div, chamber);
+            if (match) results.push(match);
+          }
         }
-      } catch {
-        maverickLine.textContent = "Maverick votes: N/A";
+        // Deduplicate by bioguide
+        const uniq = Array.from(new Map(results.map(m=>[m.bioguide,m])).values());
+        renderResults(uniq);
+      } catch (e){
+        res.innerHTML = "";
+        res.appendChild(el("div",{class:"card"}, `Error: ${e.message}`));
       }
-    }
+    };
 
-    function populateDropdown(q=""){
-      const picker = document.getElementById("picker");
-      const countEl = document.getElementById("count");
-
-      function matches(d,q){
-        if(!q) return true;
-        const s=q.toLowerCase();
-        return (
-          (d.name||"").toLowerCase().includes(s) ||
-          (d.last_name||"").toLowerCase().includes(s) ||
-          (d.bioguide_id||"").toLowerCase().includes(s) ||
-          (d.party_name||d.party_code||"").toLowerCase().includes(s) ||
-          (d.state_abbrev||"").toLowerCase().includes(s)
-        );
-      }
-
-      const list = ROWS
-        .filter(d=>matches(d,q))
-        .sort((a,b)=>{
-          const la=a.last_name.toLowerCase(), lb=b.last_name.toLowerCase();
-          if(la<lb) return -1; if(la>lb) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      picker.innerHTML = '<option value="">— choose a member —</option>';
-      for(const d of list){
-        const dim1 = d.dw_nominate ? Number(d.dw_nominate).toFixed(3) : "N/A";
-        const dim2Raw = d.dw_nominate2 ?? d.nominate_dim2 ?? "";
-        const dim2 = dim2Raw!=="" ? Number(dim2Raw).toFixed(3) : "N/A";
-        const party = (d.party_name || partyCodeToLetter(d.party_code) || "?");
-        const seat = (d.chamber.toLowerCase()==="senate")
-          ? `(${d.state_abbrev||"??"})`
-          : `(${d.state_abbrev||"??"}-${(d.district===0||d.district==="0")?"AL":(d.district||"").toString().padStart(2,"0")})`;
-        const last = d.last_name || "";
-        // Use robust first name derivation to avoid regex pitfalls
-        let firstNames = d.name || "";
-        if (last) {
-          const idx = firstNames.lastIndexOf(last);
-          if (idx > 0) firstNames = firstNames.slice(0, idx).trim();
-        }
-        const label = `${last.toUpperCase()}, ${firstNames} · ${party} ${seat} · Dim1: ${dim1} | Dim2: ${dim2}`;
-        picker.appendChild(el("option",{value:d.bioguide_id},label));
-      }
-      countEl.textContent = `${list.length} shown`;
-    }
-
-    (async function(){
-      const out = document.getElementById("card");
-      const search = document.getElementById("search");
-      const picker = document.getElementById("picker");
-
-      out.textContent = "Loading data…";
-
-      const yamlText = await fetchText(YAML_URL);
-      const yamlObj = jsyaml.load(yamlText);
-
-      const currentSet = new Set();
-      const nameByBioguide = {};
-      const lastByBioguide = {};
-      const seatByBioguide = {};
-
-      for(const rec of yamlObj){
-        const terms = rec?.terms||[];
-        if(!terms.length) continue;
-        const lastTerm = terms[terms.length-1];
-        const type = (lastTerm.type||"").toLowerCase();
-        const end  = lastTerm.end || "";
-        const bid  = rec?.id?.bioguide;
-        if(!bid) continue;
-        if ((type==="rep" || type==="sen") && (!end || end >= todayISO)){
-          currentSet.add(bid);
-          nameByBioguide[bid] = formatNameFromYaml(rec);
-          lastByBioguide[bid] = lastNameFromYaml(rec);
-          seatByBioguide[bid] = {
-            chamber: type==="rep" ? "House" : "Senate",
-            state_abbrev: lastTerm.state,
-            district: type==="rep" ? (lastTerm.district ?? "") : ""
-          };
-        }
-      }
-
-      const tsv = await fetchTSV(INDEX_URL);
-      const byBioguide = new Map();
-      for(const r of tsv){
-        const bid = r.bioguide_id;
-        if(!currentSet.has(bid)) continue;
-        const have = byBioguide.get(bid);
-        const thisHasDim1 = r.dw_nominate !== "";
-        if(!have) byBioguide.set(bid, r);
-        else if(!have.dw_nominate && thisHasDim1) byBioguide.set(bid, r);
-      }
-
-      ROWS = Array.from(byBioguide.values()).map(r => {
-        const seat = seatByBioguide[r.bioguide_id] || {};
-        return {
-          ...r,
-          name: nameByBioguide[r.bioguide_id] || r.bioguide_id,
-          last_name: lastByBioguide[r.bioguide_id] || (nameByBioguide[r.bioguide_id]||"").split(" ").slice(-1)[0] || "",
-          chamber: seat.chamber || r.chamber || "",
-          state_abbrev: seat.state_abbrev || r.state_abbrev || "",
-          district: seat.district ?? r.district ?? ""
-        };
+    useLocBtn.onclick = () => {
+      if (!navigator.geolocation) { alert("Geolocation not supported."); return; }
+      navigator.geolocation.getCurrentPosition(async (pos)=>{
+        const {latitude, longitude} = pos.coords;
+        // Basic reverse geocode via Google Maps Geocoding API would require another key.
+        alert("Paste your address manually for now (reverse geocoding not set up).");
+      }, (err)=>{
+        alert("Location error: "+err.message);
       });
-
-      COHORT.both = ROWS.map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null).filter(v => v!=null && isFinite(v));
-      COHORT.house = ROWS.filter(r => (r.chamber||"").toLowerCase()==="house")
-                         .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
-                         .filter(v => v!=null && isFinite(v));
-      COHORT.senate= ROWS.filter(r => (r.chamber||"").toLowerCase()==="senate")
-                         .map(r => r.dw_nominate!=="" ? Number(r.dw_nominate) : null)
-                         .filter(v => v!=null && isFinite(v));
-      COHORT.party = { D: [], R: [], I: [] };
-      for (const r of ROWS){
-        const key = partyKeyFromRow(r);
-        const v = r.dw_nominate!=="" ? Number(r.dw_nominate) : null;
-        if (v!=null && isFinite(v)) COHORT.party[key].push(v);
-      }
-
-      document.getElementById("search").addEventListener("input",()=>populateDropdown(document.getElementById("search").value));
-      picker.addEventListener("change",()=>{
-        selectedBioguide = picker.value || null;
-        const rec = ROWS.find(r=>r.bioguide_id===selectedBioguide);
-        renderMemberCard(out, rec);
-      });
-
-      populateDropdown("");
-      out.textContent="Select a member…";
-    })().catch(err=>{
-      console.error(err);
-      document.getElementById("card").textContent = `Failed to load: ${err}`;
-    });
+    };
   </script>
 </body>
 </html>
