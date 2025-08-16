@@ -21,7 +21,7 @@
       +           ' stroke-dasharray="'+C+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+(size/2)+' '+(size/2)+')"></circle>'
       +   '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="20" font-weight="800">'+centerText+'</text>'
       + '</svg>'
-      + '<div class="label">'+label+'</div>';
+      + '<div class="label" style="text-align:center">'+label+'</div>';
     container.appendChild(wrap);
   }
 
