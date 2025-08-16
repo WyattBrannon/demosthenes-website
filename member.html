@@ -16,7 +16,7 @@
     .subtitle{ color:var(--muted); margin-top:6px; font-size:1rem; }
     main{ flex:1; display:flex; justify-content:center; }
     .container{ width:100%; max-width:var(--maxw); margin:0 auto; padding: 0 var(--pad) 28px; }
-    .nav{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .nav{ display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
     .btn{ display:inline-block; border:1px solid var(--border); background:#fff; border-radius:10px; padding:10px 12px; text-decoration:none; color:#111; font-weight:600; }
     .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 1px 0 rgba(0,0,0,.02); }
     .stack{ display:flex; flex-direction:column; gap:var(--gap); }
@@ -31,16 +31,15 @@
     .section-title{ font-weight:700; font-size:1.05rem; }
     .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
     @media (min-width: 860px){ .grid.three{ grid-template-columns: 1fr 1fr 1fr; } }
-    /* Dial styles */
+    /* Dials */
     .dial{ display:flex; flex-direction:column; align-items:center; gap:8px; }
     .dial svg{ display:block; width:140px; height:140px; }
     .dial .label{ font-weight:700; }
     .dial .value{ font-weight:800; font-size:1.1rem; }
-    /* Debug */
-    #dbgpre{background:#0b1020;color:#aee;border:1px solid var(--border);border-radius:8px;padding:8px;
-      max-height:200px; overflow:auto; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; white-space:pre-wrap; display:none;}
+    /* Diagnostics */
+    #dbg { font-size:.9rem; color:#991b1b; }
+    #dbg code { background:#fee2e2; padding:.1rem .25rem; border-radius:.25rem; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <div class="wrap">
@@ -53,229 +52,143 @@
         <nav class="nav" aria-label="Breadcrumb">
           <a class="btn" href="index.html">← Back</a>
           <span class="muted">Member report</span>
+          <span id="dbg" class="muted"></span>
         </nav>
 
-        <!-- Header: portrait, name, party, seat, committees -->
-        <section id="headerCard" class="card"></section>
+        <!-- Header -->
+        <section id="headerCard" class="card">Loading…</section>
 
         <!-- Voting record: three dials -->
         <section class="card">
           <div class="section-title">Voting Record</div>
           <div id="dials" class="grid three"></div>
-          <div class="muted" style="font-size:.9rem;">DW-NOMINATE ranges from −1 (liberal) to +1 (conservative). Party unity and vote reliability are computed from recent vote windows where available.</div>
+          <div class="muted" style="font-size:.9rem;">DW-NOMINATE ranges from −1 (liberal) to +1 (conservative). Party unity and vote reliability are computed from the ETL JSON.</div>
         </section>
 
-        <!-- Signature work (empty) -->
+        <!-- Signature Work (empty placeholder) -->
         <section class="card">
           <div class="section-title">Signature Work</div>
-          <div id="signatureWork" class="muted">Coming soon.</div>
+          <div class="muted">Coming soon.</div>
         </section>
 
-        <!-- Funding overview (empty) -->
+        <!-- Funding Overview (empty placeholder) -->
         <section class="card">
           <div class="section-title">Funding Overview</div>
-          <div id="funding" class="muted">Coming soon.</div>
-        </section>
-
-        <section class="card">
-          <div class="section-title">Debug</div>
-          <pre id="dbgpre">Debug ready.</pre>
+          <div class="muted">Coming soon.</div>
         </section>
       </div>
     </main>
   </div>
 
 <script>
-/* ===== Utilities ===== */
-function d(line){ try{ const p=document.getElementById('dbgpre'); if(p){ p.style.display='block'; p.textContent += (line + "\\n"); p.scrollTop = p.scrollHeight; } console.log(line);}catch(_){ } }
 function qs(k){ const u=new URL(location.href); return u.searchParams.get(k) || ""; }
 function pad2(n){ return String(n).padStart(2,'0'); }
-const USPS = { "AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado","CT":"Connecticut","DE":"Delaware","DC":"District of Columbia","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"};
+function partyLetter(s){ const t=(s||'').toUpperCase(); if (t.startsWith('D') || t==='100') return 'D'; if (t.startsWith('R') || t==='200') return 'R'; return 'I'; }
+function seatText(chamber, state, district){ const c=(chamber||'').toLowerCase(); return (c==='house'||c==='rep') ? `(${state||'??'}-${(district===''||district==='0'||district==null)?'AL':pad2(district)})` : `(${state||'??'})`; }
+function setDbg(msg){ const el=document.getElementById('dbg'); if(el){ el.innerHTML = msg; } }
 
-/* ===== Data base & image helpers ===== */
 const DEFAULT_DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
 const DATA_BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DEFAULT_DATA_BASE).replace(/\\/+$/,"");
-const YAML_URL  = DATA_BASE + "/legislators-current.yaml";
-const COMM_URL  = DATA_BASE + "/committees-current.yaml";
-const COMM_MEMB_URL = DATA_BASE + "/committee-membership-current.yaml";
-const INDEX_URL = DATA_BASE + "/indexes/members_index.tsv";
 const IMG_URL   = (bioguide) => DATA_BASE + "/images/" + bioguide + ".jpg";
+const MEMBER_URL= (bioguide) => DATA_BASE + "/members/" + bioguide + ".json";
 
-/* ===== Lightweight fetch helpers ===== */
-async function fetchText(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("Fetch failed "+url); return r.text(); }
-async function fetchTSV(url){
-  const text = await fetchText(url);
-  const lines = text.trim().split(/\\r?\\n/);
-  const headers = lines.shift().split("\\t");
-  return lines.map(line => { const cols = line.split("\\t"); const o = {}; headers.forEach((h,i)=>o[h]=cols[i]??""); return o; });
-}
-function partyLetter(nameOrCode){
-  const s=(nameOrCode||"").toString().trim().toUpperCase();
-  if (s.startsWith("D") || s==="100") return "D";
-  if (s.startsWith("R") || s==="200") return "R";
-  return "I";
-}
-function seatText(chamber, state, district){
-  const c=(chamber||"").toLowerCase();
-  if (c==="rep" || c==="house") return `(${state||"??"}-${(district===""||district==="0") ? "AL" : pad2(district)})`;
-  return `(${state||"??"})`;
-}
-
-/* ===== Dials ===== */
 function renderDial(container, valuePct, centerText, label, tooltip){
-  const val = (valuePct==null || !isFinite(valuePct)) ? 0 : Math.max(0, Math.min(100, Number(valuePct)));
-  const size = 140, stroke = 12, r = (size/2) - stroke, C = 2*Math.PI*r, offset = C * (1 - val/100);
-  const wrap = document.createElement('div'); wrap.className='dial'; if (tooltip) wrap.title = tooltip;
-  wrap.innerHTML = \`
-    <svg viewBox="0 0 \${size} \${size}" role="img" aria-label="\${label}: \${isFinite(valuePct)?valuePct.toFixed(1):'N/A'}%">
-      <circle cx="\${size/2}" cy="\${size/2}" r="\${r}" fill="none" stroke="#e5e7eb" stroke-width="\${stroke}" />
-      <circle cx="\${size/2}" cy="\${size/2}" r="\${r}" fill="none" stroke="#2563eb" stroke-width="\${stroke}" stroke-linecap="round"
-              stroke-dasharray="\${C}" stroke-dashoffset="\${offset}" transform="rotate(-90 \${size/2} \${size/2})" />
-      <text x="50%" y="48%" text-anchor="middle" font-size="16" font-weight="700">\${centerText}</text>
-      <text x="50%" y="66%" text-anchor="middle" font-size="12" fill="#6b7280">\${isFinite(valuePct)?valuePct.toFixed(1):'N/A'}%</text>
+  const size=140, stroke=12, r=(size/2)-stroke, C=2*Math.PI*r;
+  const pct = (valuePct==null || !isFinite(valuePct)) ? 0 : Math.max(0,Math.min(100,Number(valuePct)));
+  const offset = C*(1 - pct/100);
+  const wrap=document.createElement('div'); wrap.className='dial'; if (tooltip) wrap.title=tooltip;
+  wrap.innerHTML = `
+    <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="${label}: ${isFinite(valuePct)?valuePct.toFixed(1):'N/A'}%">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="${stroke}"></circle>
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#2563eb" stroke-width="${stroke}" stroke-linecap="round"
+              stroke-dasharray="${C}" stroke-dashoffset="${offset}" transform="rotate(-90 ${size/2} ${size/2})"></circle>
+      <text x="50%" y="48%" text-anchor="middle" font-size="16" font-weight="700">${centerText}</text>
+      <text x="50%" y="66%" text-anchor="middle" font-size="12" fill="#6b7280">${isFinite(valuePct)?valuePct.toFixed(1):'N/A'}%</text>
     </svg>
-    <div class="label">\${label}</div>
-  \`;
+    <div class="label">${label}</div>
+  `;
   container.appendChild(wrap);
 }
 
-/* ===== Maverick + Missed votes (index) ===== */
-const MAV_CACHE = { map: null, per: new Map() };
-async function fetchMaverick(bid){
-  if (MAV_CACHE.map === null) { try { MAV_CACHE.map = await (await fetch(DATA_BASE + "/indexes/maverick_counts.json",{cache:"no-store"})).json(); } catch { MAV_CACHE.map = false; } }
-  if (MAV_CACHE.map && MAV_CACHE.map[bid]) return MAV_CACHE.map[bid];
-  if (MAV_CACHE.per.has(bid)) return MAV_CACHE.per.get(bid);
-  try {
-    const obj = await (await fetch(DATA_BASE + "/indexes/maverick/" + bid + ".json",{cache:"no-store"})).json();
-    MAV_CACHE.per.set(bid, obj); return obj;
-  } catch { MAV_CACHE.per.set(bid, null); return null; }
-}
-
-/* ===== Render header ===== */
-function renderHeader(m, committees){
-  const mount = document.getElementById('headerCard');
-  mount.innerHTML = "";
-  if (!m){ mount.textContent = "Member not found."; return; }
-
-  const img = new Image(); img.className="portrait"; img.alt=m.name || "Portrait"; img.src=IMG_URL(m.bioguide); img.onerror = () => { img.style.display='none'; };
-
-  const h = document.createElement('div'); h.className='stack';
-  const name = document.createElement('div'); name.className='name'; name.textContent = m.name || m.bioguide;
-  const pill = document.createElement('span'); pill.className='pill ' + (partyLetter(m.party)); pill.textContent = partyLetter(m.party);
-  const seat = document.createElement('div'); seat.className='muted'; seat.textContent = (m.chamber==="sen"?"Senator":"Representative") + " " + seatText(m.chamber, m.state, m.district);
-  const term = document.createElement('div'); term.className='muted mono'; term.textContent = \`Term: \${m.term?.start||"?"} → \${m.term?.end||"?"}\`;
-
-  const committeesWrap = document.createElement('div'); committeesWrap.className='stack';
-  const ct = document.createElement('div'); ct.className='section-title'; ct.textContent="Committees";
-  const list = document.createElement('ul'); list.className='list';
-  if (committees && committees.length){
-    committees.forEach(c => { const li=document.createElement('li'); li.textContent = c; list.appendChild(li); });
-  } else {
-    const li=document.createElement('li'); li.textContent="N/A"; list.appendChild(li);
-  }
-  committeesWrap.append(ct, list);
-
-  h.append(name, pill, seat, term, committeesWrap);
-
-  const row = document.createElement('div'); row.className='row'; row.append(img, h);
-  mount.appendChild(row);
-}
-
-/* ===== Main ===== */
 async function main(){
   const bioguide = qs('bioguide');
-  if (!bioguide){ document.getElementById('headerCard').textContent="Missing ?bioguide=…"; return; }
+  const header = document.getElementById('headerCard');
+  if (!bioguide){ header.textContent="Missing ?bioguide=…"; return; }
 
-  // Load: YAML (roster), index (for dim1), committees (best effort)
-  const [yamlText, tsvText, commText, commMemText] = await Promise.allSettled([
-    fetchText(YAML_URL),
-    fetchText(INDEX_URL),
-    fetchText(COMM_URL),
-    fetchText(COMM_MEMB_URL)
-  ]);
+  const url = MEMBER_URL(bioguide);
+  setDbg(`<code>DATA_BASE</code> = ${DATA_BASE}`);
+  header.textContent = "Fetching member JSON…";
 
-  if (yamlText.status !== "fulfilled" || tsvText.status !== "fulfilled"){
-    document.getElementById('headerCard').textContent = "Failed to load data."; return;
-  }
-  const yaml = jsyaml.load(yamlText.value);
-  const lines = tsvText.value.trim().split(/\\r?\\n/);
-  const headers = lines.shift().split("\\t");
-  const rows = lines.map(line => { const cols=line.split("\\t"); const o={}; headers.forEach((h,i)=>o[h]=cols[i]??""); return o; });
-
-  // Build current member object
-  const todayISO = new Date().toISOString().slice(0,10);
-  let found=null;
-  for(const rec of yaml){
-    if (rec?.id?.bioguide !== bioguide) continue;
-    const terms = rec?.terms||[]; if(!terms.length) continue;
-    const t = terms[terms.length-1];
-    const type=(t.type||"").toLowerCase();
-    const end=t.end||"";
-    if (!((type==="rep"||type==="sen") && (!end || end >= todayISO))) continue;
-    found = {
-      bioguide,
-      name: [rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "),
-      party: t.party || rec?.party || "",
-      chamber: type==="rep" ? "house" : "sen",
-      state: t.state,
-      district: type==="rep" ? (t.district ?? "AL") : null,
-      term: { start: t.start || "", end: t.end || "" }
-    };
-    break;
-  }
-
-  if (!found){ document.getElementById('headerCard').textContent = "Member not found or not current."; return; }
-
-  // Committees best-effort: parse YAML if present
-  let committeeNames = [];
+  let data = null;
   try{
-    if (commText.status==="fulfilled" && commMemText.status==="fulfilled"){
-      const commYaml = jsyaml.load(commText.value) || [];
-      const memYaml = jsyaml.load(commMemText.value) || {};
-      const mem = memYaml[bioguide] || [];
-      const nameByCode = new Map();
-      for(const c of commYaml){
-        if (!c || !c.thomas_id) continue;
-        nameByCode.set(c.thomas_id, c.name || c.display_name || c.thomas_id);
-      }
-      committeeNames = (mem||[]).map(m => nameByCode.get(m.committee) || m.committee).filter(Boolean);
-    }
-  }catch(e){ d("Committee parse error: " + (e && e.message || e)); }
-
-  renderHeader(found, committeeNames);
-
-  // Build dials
-  const rec = rows.find(r => r.bioguide_id === bioguide) || {};
-  const dialsMount = document.getElementById('dials');
-
-  // Ideology: map dim1 -1..+1 to 0..100 (conservatism share)
-  const dim1 = rec.dw_nominate!=="" && rec.dw_nominate!=null ? Number(rec.dw_nominate) : null;
-  const ideologyPct = (dim1==null || !isFinite(dim1)) ? null : Math.max(0, Math.min(100, ((dim1 + 1) / 2) * 100));
-  renderDial(dialsMount, ideologyPct, (dim1!=null && isFinite(dim1)) ? dim1.toFixed(2) : "N/A", "Ideology (DW-NOMINATE)", "−1 liberal … +1 conservative");
-
-  // Party unity & vote reliability via maverick index JSON (if available)
-  try{
-    const mv = await fetchMaverick(bioguide);
-    let partyUnity = null, reliability = null;
-    if (mv){
-      const maverickPct = (mv.total_votes>0) ? (mv.maverick_votes / mv.total_votes) * 100 : (mv.maverick_rate!=null ? mv.maverick_rate*100 : null);
-      const missed = Number(mv.missed_votes||0);
-      const tot = Number(mv.total_votes||0) + missed;
-      const missedPct = tot ? (missed / tot) * 100 : null;
-      partyUnity = (maverickPct==null) ? null : (100 - maverickPct);
-      reliability = (missedPct==null) ? null : (100 - missedPct);
-    }
-    renderDial(dialsMount, partyUnity, partyUnity!=null && isFinite(partyUnity) ? partyUnity.toFixed(0) : "—", "Party Unity", "100 − (% maverick votes)");
-    renderDial(dialsMount, reliability, reliability!=null && isFinite(reliability) ? reliability.toFixed(0) : "—", "Vote Reliability", "100 − (missed / (total + missed))");
+    const r = await fetch(url, {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status + " for " + url);
+    data = await r.json();
   }catch(e){
-    d("Maverick fetch error: " + (e && e.message || e));
-    renderDial(dialsMount, null, "—", "Party Unity", "No data");
-    renderDial(dialsMount, null, "—", "Vote Reliability", "No data");
+    header.textContent = "Failed to load member JSON.";
+    setDbg("Error: " + (e && e.message || e));
+    return;
   }
+  if (!data || !data.identity || !data.alignment){
+    header.textContent = "Invalid member JSON.";
+    return;
+  }
+
+  // ---- Header render
+  const id = data.identity || {};
+  const party = id.party || "";
+  const state = id.state || "";
+  const district = id.district || null;
+  const chamber = (id.district==null ? "senate" : "house"); // heuristic; ETL can add if needed
+  const name = data.name && data.name.official_full ? data.name.official_full : (data.identity.display_name || data.bioguide);
+  header.innerHTML = "";
+  const img = new Image(); img.className="portrait"; img.alt=name||"Portrait"; img.src=IMG_URL(data.bioguide); img.onerror=()=>{ img.style.display='none'; };
+  const nameEl = document.createElement('div'); nameEl.className='name'; nameEl.textContent = name;
+  const pill = document.createElement('span'); pill.className='pill ' + partyLetter(party); pill.textContent = partyLetter(party);
+  const seat = document.createElement('div'); seat.className='muted'; seat.textContent = (chamber==="senate"?"Senator":"Representative") + " " + seatText(chamber, state, district);
+  const tenure = document.createElement('div'); tenure.className='muted mono'; tenure.textContent = `Tenure: ${id.tenure_years ?? "?"} years`;
+
+  const commWrap = document.createElement('div'); commWrap.className='stack';
+  const commTitle = document.createElement('div'); commTitle.className='section-title'; commTitle.textContent = "Committees";
+  const commList = document.createElement('ul'); commList.className='list';
+  const committees = Array.isArray(id.committees) ? id.committees : [];
+  if (committees.length){
+    committees.forEach(c => {
+      const li=document.createElement('li');
+      li.textContent = c.name + (c.role ? ` — ${c.role}` : "");
+      commList.appendChild(li);
+    });
+  } else {
+    const li=document.createElement('li'); li.textContent="N/A"; commList.appendChild(li);
+  }
+  commWrap.append(commTitle, commList);
+  const row = document.createElement('div'); row.className='row';
+  const right = document.createElement('div'); right.className='stack'; right.append(nameEl, pill, seat, tenure, commWrap);
+  row.append(img, right);
+  header.appendChild(row);
+
+  // ---- Dials
+  const dials = document.getElementById('dials');
+  const al = data.alignment || {};
+  // Ideology: center = raw dim1; ring = dim1 mapped to 0..100
+  let dim1 = (typeof al.dw_nominate_dim1 === "number") ? al.dw_nominate_dim1 : null;
+  const ideologyPct = (dim1==null) ? null : Math.max(0, Math.min(100, ((dim1 + 1)/2)*100));
+  renderDial(dials, ideologyPct, (dim1!=null ? dim1.toFixed(2) : "N/A"), "Ideology (DW-NOMINATE)", "−1 liberal … +1 conservative");
+
+  // Party unity: spec uses 0..1 -> convert to %
+  const pu = (typeof al.party_unity_pct === "number") ? (al.party_unity_pct * 100) : null;
+  renderDial(dials, pu, (pu!=null ? Math.round(pu).toString() : "—"), "Party Unity", "100 − (% maverick votes)");
+
+  // Vote reliability: 1 - missed/(total+missed)
+  const total = Number(al.total_votes||0);
+  const missed = Number(al.missed_votes||0);
+  const denom = total + missed;
+  const reliability = denom ? (100 - (missed / denom) * 100) : null;
+  renderDial(dials, reliability, (reliability!=null ? Math.round(reliability).toString() : "—"), "Vote Reliability", "100 − (missed / (total + missed))");
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  main().catch(e => { d("Load error: " + (e && e.message || e)); document.getElementById('headerCard').textContent="Error loading member."; });
+  main().catch(e => { const h=document.getElementById('headerCard'); if (h) h.textContent = "Load error: " + (e && e.message || e); });
 });
 </script>
 </body>
