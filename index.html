@@ -160,7 +160,7 @@ function extractDistrictFromCensus(j) {
         Data base: <span class="mono" id="dataBaseLabel"></span>
         
         <div class="row" style="margin-top:6px">
-          <label> (optional): </label>
+          <label>  </label>
           </div>
         <div id="msg" class="msg warn" style="display:none;"></div>
         <details id="debug"><summary>Debug info</summary><pre id="dbgpre"></pre></details>
@@ -347,7 +347,7 @@ function extractDistrictFromCensus(j) {
       
 // 2) Fallback: quick OSM geocode and simple guess (best-effort; can be wrong in multi-district states)
 try {
-  const NOMINATIM_EMAIL = window.NOMINATIM_EMAIL || ""; // optional: set e.g. "you@example.com"
+  const NOMINATIM_EMAIL = window.NOMINATIM_EMAIL || ""; //  set e.g. "you@example.com"
   const osmParams = new URLSearchParams({
     format: "jsonv2",
     addressdetails: "1",
