@@ -33,6 +33,115 @@
     select { padding:.45rem .6rem; border:1px solid var(--border); border-radius:8px; font-size:1rem; width:100%; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
+
+
+<script>
+// JSONP helper (for APIs that don't set CORS headers)
+function jsonpRequest(url, paramName = 'callback', debug) {
+  return new Promise((resolve, reject) => {
+    const cb = 'jsonp_cb_' + Math.random().toString(36).slice(2);
+    const cleanup = () => {
+      try { delete window[cb]; } catch (_) {}
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    };
+    window[cb] = function (data) {
+      cleanup();
+      resolve(data);
+    };
+    const script = document.createElement('script');
+    const sep = url.includes('?') ? '&' : '?';
+    script.src = url + sep + encodeURIComponent(paramName) + '=' + encodeURIComponent(cb);
+    script.onerror = function () {
+      cleanup();
+      reject(new Error('JSONP load error'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// Helper to fetch congressional district from Census Geocoder using lat/lon
+async function fetchCensusDistrict(lat, lon, debug) {
+  const base = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates`;
+  const params = (bmk, vtg, layers) => (
+    `?y=${encodeURIComponent(lat)}&x=${encodeURIComponent(lon)}` +
+    `&benchmark=${encodeURIComponent(bmk)}` +
+    `&vintage=${encodeURIComponent(vtg)}` +
+    (layers ? `&layers=${encodeURIComponent(layers)}` : '') +
+    `&format=json`
+  );
+  const urls = [
+    base + params('Public_AR_Current', 'Current_Current', 'Congressional Districts'),
+    base + params('Public_AR_Current', 'Current_Current', ''),
+    base + params('Public_AR_Census2020', 'Current_Current', 'Congressional Districts')
+  ];
+
+  for (const url of urls) {
+    try {
+      debug && debug("Census GET " + url);
+      // Try fetch first
+      try {
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error("Census HTTP " + r.status);
+        const j = await r.json();
+        const d = extractDistrictFromCensus(j);
+        if (d) return d;
+      } catch (e) {
+        debug && debug("Census fetch error: " + (e && e.message || e));
+        // Try JSONP fallbacks (some Census deployments don't send CORS headers)
+        try {
+          debug && debug("Census JSONP GET " + url + " [callback]");
+          const j = await jsonpRequest(url, 'callback', debug);
+          const d = extractDistrictFromCensus(j);
+          if (d) return d;
+        } catch (e1) {
+          debug && debug("Census JSONP (callback) failed: " + (e1 && e1.message || e1));
+          try {
+            debug && debug("Census JSONP GET " + url + " [jsonp]");
+            const j2 = await jsonpRequest(url, 'jsonp', debug);
+            const d2 = extractDistrictFromCensus(j2);
+            if (d2) return d2;
+          } catch (e2) {
+            debug && debug("Census JSONP (jsonp) failed: " + (e2 && e2.message || e2));
+          }
+        }
+      }
+    } catch (outer) {
+      debug && debug("Census error: " + (outer && outer.message || outer));
+      continue;
+    }
+  }
+  return ""; // not found
+}
+
+// Pull two-digit district code from Census Geocoder response
+function extractDistrictFromCensus(j) {
+  if (!j || !j.result || !j.result.geographies) return "";
+  const geogs = j.result.geographies;
+  let cds = geogs["Congressional Districts"];
+  if (!Array.isArray(cds) || cds.length === 0) {
+    for (const k of Object.keys(geogs)) {
+      if (/Congressional District/i.test(k)) {
+        const arr = geogs[k];
+        if (Array.isArray(arr) && arr.length) { cds = arr; break; }
+      }
+    }
+  }
+  if (Array.isArray(cds) && cds.length) {
+    const rec = cds[0];
+    let d = "";
+    if (typeof rec.BASENAME === "string") d = rec.BASENAME.trim();
+    if (!/^\d{2}$/.test(d) && typeof rec.GEOID === "string") {
+      const m = rec.GEOID.match(/(\d{2})$/);
+      if (m) d = m[1];
+    }
+    if (/^\d{1,2}$/.test(d)) return d.length === 1 ? ("0" + d) : d;
+    if (/^(AL|00)$/i.test(d)) return "AL";
+  }
+  return "";
+}
+</script>
+
+
 </head>
 <body>
   <div class="wrap">
@@ -233,24 +342,78 @@
       } catch (e) {
         debug('API failed: ' + e.message);
       }
-      // 2) Fallback: quick OSM geocode and simple guess (best-effort; can be wrong in multi-district states)
-      try {
-        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`;
-        debug("OSM GET " + url);
-        const r = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-        if (!r.ok) throw new Error("OSM HTTP "+r.status);
-        const j = await r.json();
-        if (!Array.isArray(j) || !j.length) throw new Error("OSM: no results");
-        const comp = j[0].address || {};
-        const state = (comp.state_code || comp.state || "").toString().toUpperCase().slice(0,2);
-        // As we can't reliably get CD client-side on your network, we default to AL for AL states else show manual selector
-        const district = AL_STATES.has(state) ? "AL" : "";
-        if (state && district) return { state, district };
-        debug('OSM fallback needs manual selection');
-      } catch (e) {
-        debug('OSM fallback failed: ' + e.message);
-      }
-      // 3) Require manual selection
+      
+// 2) Fallback: quick OSM geocode and simple guess (best-effort; can be wrong in multi-district states)
+try {
+  const NOMINATIM_EMAIL = window.NOMINATIM_EMAIL || ""; // optional: set e.g. "you@example.com"
+  const osmParams = new URLSearchParams({
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: "1",
+    q: address
+  });
+  if (NOMINATIM_EMAIL) osmParams.set("email", NOMINATIM_EMAIL);
+
+  const url = `https://nominatim.openstreetmap.org/search?${osmParams.toString()}`;
+  debug("OSM GET " + url);
+  const r = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  if (!r.ok) throw new Error("OSM HTTP " + r.status);
+  const j = await r.json();
+  if (!Array.isArray(j) || !j.length) throw new Error("OSM: no results");
+  const comp = j[0].address || {};
+
+  // Derive USPS state code robustly
+  const iso =
+    comp["ISO3166-2-lvl4"] || comp["ISO3166-2-lvl3"] || comp["ISO3166-2-lvl2"] || "";
+  const isoMatch = /US-([A-Z]{2})/.exec(String(iso));
+  const fromIso = isoMatch ? isoMatch[1] : "";
+
+  const uspsByName = {
+    "ALABAMA":"AL","ALASKA":"AK","ARIZONA":"AZ","ARKANSAS":"AR","CALIFORNIA":"CA",
+    "COLORADO":"CO","CONNECTICUT":"CT","DELAWARE":"DE","DISTRICT OF COLUMBIA":"DC",
+    "FLORIDA":"FL","GEORGIA":"GA","HAWAII":"HI","IDAHO":"ID","ILLINOIS":"IL",
+    "INDIANA":"IN","IOWA":"IA","KANSAS":"KS","KENTUCKY":"KY","LOUISIANA":"LA",
+    "MAINE":"ME","MARYLAND":"MD","MASSACHUSETTS":"MA","MICHIGAN":"MI","MINNESOTA":"MN",
+    "MISSISSIPPI":"MS","MISSOURI":"MO","MONTANA":"MT","NEBRASKA":"NE","NEVADA":"NV",
+    "NEW HAMPSHIRE":"NH","NEW JERSEY":"NJ","NEW MEXICO":"NM","NEW YORK":"NY",
+    "NORTH CAROLINA":"NC","NORTH DAKOTA":"ND","OHIO":"OH","OKLAHOMA":"OK",
+    "OREGON":"OR","PENNSYLVANIA":"PA","RHODE ISLAND":"RI","SOUTH CAROLINA":"SC",
+    "SOUTH DAKOTA":"SD","TENNESSEE":"TN","TEXAS":"TX","UTAH":"UT","VERMONT":"VT",
+    "VIRGINIA":"VA","WASHINGTON":"WA","WEST VIRGINIA":"WV","WISCONSIN":"WI","WYOMING":"WY",
+    "PUERTO RICO":"PR","GUAM":"GU","NORTHERN MARIANA ISLANDS":"MP","AMERICAN SAMOA":"AS",
+    "UNITED STATES VIRGIN ISLANDS":"VI"
+  };
+
+  const stateName = String(comp.state || "").toUpperCase().trim();
+  let state = "";
+
+  if (fromIso) {
+    state = fromIso;
+  } else if (stateName in uspsByName) {
+    state = uspsByName[stateName];
+  } else if (/^[A-Z]{2}$/.test(String(comp.state_code || ""))) {
+    state = String(comp.state_code).toUpperCase();
+  }
+
+  // Use at-large if applicable, otherwise ask Census for district using lat/lon
+  if (state) {
+    if (AL_STATES.has(state)) {
+      return { state, district: "AL" };
+    }
+    const lat = parseFloat(j[0].lat), lon = parseFloat(j[0].lon);
+    if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+      const district = await fetchCensusDistrict(lat, lon, debug);
+      if (district) return { state, district };
+      debug("Census geocoder did not return a district for these coordinates");
+    } else {
+      debug("OSM did not provide usable lat/lon");
+    }
+  }
+  debug("OSM fallback needs manual selection");
+} catch (e) {
+  debug("OSM fallback failed: " + e.message);
+}
+// 3) Require manual selection
       throw new Error('Automatic resolver unavailable on this network. Use the manual state/district selector below.');
     }
 
@@ -285,4 +448,4 @@
   });
   </script>
 </body>
-</html>
+</html
