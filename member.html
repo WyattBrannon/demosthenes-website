@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Demosthenes — Member Report</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- build: member.html · v2025-08-16-4 -->
+  <!-- build: member.html · v2025-08-16-8 · v2025-08-16-7 -->
   <style>
     :root { --fg:#111827; --muted:#6b7280; --card:#ffffff; --border:#e5e7eb; --bg:#f8fafc; --accent:#2563eb; --maxw:720px; --pad:16px; --gap:12px; }
     *, *::before, *::after { box-sizing: border-box; }
@@ -15,6 +15,7 @@
     header{ padding:24px var(--pad) 10px; text-align:center; }
     .title{ font-weight:800; font-size:1.8rem; line-height:1.1; }
     .subtitle{ color:var(--muted); margin-top:6px; font-size:1rem; }
+    .badge{ color:var(--muted); font-size:.8rem; }
     main{ flex:1; display:flex; justify-content:center; }
     .container{ width:100%; max-width:var(--maxw); margin:0 auto; padding: 0 var(--pad) 28px; }
     .nav{ display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
@@ -25,16 +26,14 @@
     .muted{ color:var(--muted); }
     img.portrait{ width:120px; height:auto; border-radius:12px; border:1px solid var(--border); background:#fff; }
     .name{ font-size:1.35rem; font-weight:800; }
-    .pill{ display:inline-block; padding:.15rem .45rem; border-radius:999px; border:1px solid var(--border); font-weight:700; margin-left:.5rem; }
+    .pill{ display:inline-block; padding:.05rem .35rem; border-radius:999px; border:1px solid var(--border); font-weight:700; margin-left:.5rem; }
     .pill.D{ background:#dbeafe; color:#1e3a8a; } .pill.R{ background:#fee2e2; color:#991b1b; } .pill.I{ background:#e5e7eb; color:#374151; }
-    .mono{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .list{ margin:0; padding-left:1.1rem; }
     .section-title{ font-weight:700; font-size:1.05rem; }
     .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
-    .grid.three{ grid-template-columns: 1fr 1fr 1fr; }
+    .grid.three{ grid-template-columns: 1fr 1fr 1fr; } /* side-by-side on mobile */
     .dial{ display:flex; flex-direction:column; align-items:center; gap:8px; }
     .dial svg{ display:block; width:120px; height:120px; }
-    .dial .label{ font-weight:700; }
     #dbg { font-size:.9rem; }
     #dbg .err { color:#991b1b; }
     #dbg code { background:#fee2e2; padding:.1rem .25rem; border-radius:.25rem; }
@@ -44,6 +43,7 @@
   <div class="wrap">
     <header>
       <div class="title">Demosthenes</div>
+      <div class="badge">v2025-08-16-8</div>
       <div class="subtitle">Data-rich reports on your congresspeople</div>
       <noscript><div class="card" style="margin:12px auto; max-width:720px; border-color:#ef4444; color:#991b1b;">
         JavaScript is disabled or blocked by Content Security Policy. This page needs JS to fetch the member JSON.
@@ -57,23 +57,23 @@
           <span id="dbg" class="muted"></span>
         </nav>
 
-        <!-- 1) Header section -->
+        <!-- Header section -->
         <section id="headerCard" class="card">Loading…</section>
 
-        <!-- 2) Voting record dials -->
+        <!-- Voting record dials -->
         <section class="card">
           <div class="section-title">Voting Record</div>
           <div id="dials" class="grid three"></div>
           <div class="muted" style="font-size:.9rem;">DW-NOMINATE ranges from −1 (liberal) to +1 (conservative). Party unity and vote reliability are computed from the ETL JSON.</div>
         </section>
 
-        <!-- 3) Signature Work (placeholder) -->
+        <!-- Signature Work (placeholder) -->
         <section class="card">
           <div class="section-title">Signature Work</div>
           <div class="muted">Coming soon.</div>
         </section>
 
-        <!-- 4) Funding Overview (placeholder) -->
+        <!-- Funding Overview (placeholder) -->
         <section class="card">
           <div class="section-title">Funding Overview</div>
           <div class="muted">Coming soon.</div>
@@ -82,6 +82,6 @@
     </main>
   </div>
 
-  <script src="./member.app.js?v=20250816-4" defer></script>
+  <script src="./member.app.js?v=v2025-08-16-8" defer></script>
 </body>
 </html>
