@@ -6,17 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; --accent:#2563eb; --warn:#b45309; --err:#b91c1c; }
-    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:24px; }
-    h1 { font-size:1.8rem; margin:0 0 8px; }
-    p.hint { color:var(--muted); margin-top:0; }
-    .wrap { display:grid; grid-template-columns: 1fr; gap:16px; max-width:1000px; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:0; background:#f8fafc; }
+    h1 { font-size:1.9rem; margin:0 0 6px; text-align:center; }
+    p.hint { color:var(--muted); margin:.25rem 0 0; text-align:center; }
+    .wrap { display:grid; grid-template-columns: 1fr; gap:16px; max-width:720px; padding:20px 16px 28px; margin:0 auto; }
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     input[type="text"] { padding:.6rem .8rem; font-size:1rem; border:1px solid var(--border); border-radius:8px; min-width:280px; flex:1; }
     button { padding:.6rem .9rem; font-size:1rem; border:1px solid var(--border); border-radius:10px; background:#fff; cursor:pointer; }
     button.primary { background:var(--accent); color:white; border-color:var(--accent); }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; width:100%; }
     .settings { font-size:.95rem; color:var(--muted); }
-    .result-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+    .result-grid { display:grid; grid-template-columns: 1fr; gap:12px; }
     .member { display:flex; gap:12px; align-items:flex-start; }
     img.portrait { width:72px; height:96px; object-fit:cover; border-radius:8px; border:1px solid var(--border); background:#fff; }
     a.btn { display:inline-block; margin-top:6px; text-decoration:none; color:var(--accent); }
@@ -147,7 +147,7 @@ function extractDistrictFromCensus(j) {
   <div class="wrap">
     <header>
       <h1>Demosthenes</h1>
-      <p class="hint">Type your address to find your two Senators and your Representative.
+      <p class="hint">Data-rich reports on your congresspeople</p>
     </header>
 
     <section class="card">
@@ -157,7 +157,6 @@ function extractDistrictFromCensus(j) {
         <button id="useSample">Try sample</button>
       </div>
       <div class="settings" style="margin-top:8px;">
-        Data base: <span class="mono" id="dataBaseLabel"></span>
         
         <div class="row" style="margin-top:6px">
           <label>  </label>
@@ -183,11 +182,7 @@ function extractDistrictFromCensus(j) {
     </section>
 
     <section id="results" class="result-grid"></section>
-
-    <footer class="dim">
-      Data: Voteview + congress-legislators · Address resolver: optional server proxy → OSM fallback → manual selector.
-    </footer>
-  </div>
+</div>
 
   <script>
   window.addEventListener('error', function(e){
@@ -204,9 +199,6 @@ function extractDistrictFromCensus(j) {
     
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
     const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
-    const dataBaseLabel = document.getElementById("dataBaseLabel");
-    dataBaseLabel.textContent = BASE;
-
     const YAML_URL = `${BASE}/legislators-current.yaml`;
 
     const addrEl = document.getElementById("addr");
