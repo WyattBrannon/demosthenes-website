@@ -70,20 +70,34 @@
       var party = id.party || "";
       var state = id.state || "";
       var district = id.district || null;
-      var chamber = (id.district==null ? "senate" : "house");
-      var displayName = (data.name && data.name.official_full) ? data.name.official_full : (id.display_name || data.bioguide);
+      var chamber = (id.chamber && (""+id.chamber).toLowerCase()) || (function(){
+  var d = id.district;
+  if (typeof d === "string" && d.length) return "house";
+  if (typeof d === "number") return "house";
+  if (d === "AL") return "house";
+  return "senate";
+})();
+      var displayName = (data.name && data.name.official_full) ? data.name.official_full
+  : (id.official_full || id.display_name || (id.first && id.last ? (id.first + " " + id.last) : null) || data.bioguide);
 
       header.innerHTML = "";
       var img = new Image(); img.className="portrait"; img.alt=displayName||"Portrait"; img.src = DB + "/images/" + data.bioguide + ".jpg"; img.onerror=function(){ img.style.display='none'; };
       var nameEl = document.createElement('div'); nameEl.className='name'; nameEl.textContent = displayName;
       var pill = document.createElement('span'); pill.className='pill ' + partyLetter(party); pill.textContent = partyLetter(party);
       var seat = document.createElement('div'); seat.className='muted'; seat.textContent = (chamber==="senate"?"Senator":"Representative") + " " + seatText(chamber, state, district);
-      var tenure = document.createElement('div'); tenure.className='muted mono'; tenure.textContent = "Tenure: " + (id.tenure_years==null?"?":id.tenure_years) + " years";
+      var tenure = document.createElement('div'); tenure.className='muted'; tenure.textContent = "Tenure: " + (id.tenure_years==null?"?":id.tenure_years) + " years";
 
       var commWrap = document.createElement('div'); commWrap.className='stack';
       var commTitle = document.createElement('div'); commTitle.className='section-title'; commTitle.textContent = "Committees";
       var commList = document.createElement('ul'); commList.className='list';
       var committees = Array.isArray(id.committees) ? id.committees : [];
+committees = committees.filter(function(c){
+  var code = (c && (c.code || c.id || c.committee || "")) + "";
+  var name = (c && c.name) ? c.name : "";
+  if (/\d$/.test(code)) return false; // drop subcommittees with numeric codes
+  if (/subcommittee/i.test(name)) return false; // heuristically drop
+  return true;
+});
       if (committees.length){
         committees.forEach(function(c){
           var li=document.createElement('li');
@@ -105,7 +119,7 @@
       var al = data.alignment || {};
       var dim1 = (typeof al.dw_nominate_dim1 === "number") ? al.dw_nominate_dim1 : NaN;
       var ideologyPct = isNaN(dim1) ? NaN : Math.max(0, Math.min(100, ((dim1 + 1)/2)*100));
-      renderDial(dials, ideologyPct, (isNaN(dim1)?"N/A":dim1.toFixed(2)), "Ideology (DW-NOMINATE)", "−1 liberal … +1 conservative");
+      renderDial(dials, ideologyPct, (isNaN(dim1)?"N/A":dim1.toFixed(2)), "Ideology", "−1 liberal … +1 conservative");
 
       var pu = (typeof al.party_unity_pct === "number") ? (al.party_unity_pct * 100) : NaN;
       renderDial(dials, pu, (isNaN(pu)?"—":String(Math.round(pu))), "Party Unity", "100 − (% maverick votes)");
