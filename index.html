@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <!-- build: index.html · v2025-08-16-idx4 -->
   <meta charset="utf-8" />
   <title>Demosthenes — Find Your Representatives</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -168,6 +169,11 @@ function extractDistrictFromCensus(j) {
     </section>
 
     <section class="card">
+      <!-- Name search (above manual selector) -->
+      <div class="row" style="margin-bottom:8px">
+        <input id="nameQuery" type="text" placeholder="Search by name (e.g., Eleanor Holmes Norton)" />
+        <button class="primary" id="searchByName">Search</button>
+      </div>
       <h3>Manual district selector</h3>
       <div class="grid2">
         <label class="select">State
@@ -278,6 +284,21 @@ function extractDistrictFromCensus(j) {
           norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
         };
       }).filter(Boolean);}
+
+    
+    // === Search by name ===
+    function memberDisplayName(m){
+      if (m.name && m.name.trim()) return m.name.trim();
+      return [m.first, m.middle, m.last].filter(Boolean).join(" ").trim() || (m.bioguide||"");
+    }
+    function searchMembersByName(query){
+      const q = normalizeName(query||"");
+      if (!q) return [];
+      return (Array.isArray(CURRENT)?CURRENT:[]).filter(m => {
+        const nm = normalizeName(memberDisplayName(m));
+        return nm.includes(q);
+      });
+    }
 
     function findMembers(where){
       const {state, district} = where;
@@ -429,6 +450,12 @@ try {
 
     goBtn.addEventListener('click', function(ev){ ev.preventDefault(); onGoClick(); });
     (sampleBtn) && sampleBtn.addEventListener('click', function(ev){ ev.preventDefault(); addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; onGoClick(); });
+
+    // Name search wiring
+    const nameInput = document.getElementById('nameQuery');
+    const nameBtn = document.getElementById('searchByName');
+    if (nameBtn) nameBtn.addEventListener('click', function(){ hideMsg(); const q = nameInput && nameInput.value || ''; const people = searchMembersByName(q); renderResults(people); });
+    if (nameInput) nameInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); nameBtn && nameBtn.click(); }});
 
     goManual.addEventListener('click', function(){
       hideMsg();
