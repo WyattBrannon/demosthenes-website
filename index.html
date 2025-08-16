@@ -148,7 +148,6 @@ function extractDistrictFromCensus(j) {
     <header>
       <h1>Demosthenes</h1>
       <p class="hint">Type your address to find your two Senators and your Representative.
-        If network blocks third‑party APIs, use the manual state/district selector.</p>
     </header>
 
     <section class="card">
@@ -159,9 +158,9 @@ function extractDistrictFromCensus(j) {
       </div>
       <div class="settings" style="margin-top:8px;">
         Data base: <span class="mono" id="dataBaseLabel"></span>
-        · Optional API base: <span class="mono" id="apiBaseLabel"></span>
+        
         <div class="row" style="margin-top:6px">
-          <label>Set API base (optional): <input id="apiBase" type="text" placeholder="https://your-api.example.com" style="min-width:360px;" /></label>
+          <label>Set API base (optional): </label>
           <button id="saveApi">Save</button>
           <button id="clearApi">Clear</button>
         </div>
@@ -171,7 +170,7 @@ function extractDistrictFromCensus(j) {
     </section>
 
     <section class="card">
-      <h3>Manual selector (no external calls)</h3>
+      <h3>Manual district selector</h3>
       <div class="grid2">
         <label class="select">State
           <select id="stateSel"></select>
@@ -202,6 +201,9 @@ function extractDistrictFromCensus(j) {
   });
 
   window.addEventListener('DOMContentLoaded', function(){
+
+    function getApiBase(){ return ""; }
+    
     const DATA_BASE = "https://WyattBrannon.github.io/demosthenes-data";
     const BASE = (localStorage.getItem("DEMOS_DATA_BASE") || DATA_BASE).replace(/\/+$/,"");
     const dataBaseLabel = document.getElementById("dataBaseLabel");
@@ -221,10 +223,15 @@ function extractDistrictFromCensus(j) {
     const clearApiBtn = document.getElementById('clearApi');
     const apiBaseLabel = document.getElementById('apiBaseLabel');
 
-    function getApiBase(){ return localStorage.getItem('DEMOS_API_BASE') || ''; }
-    function setApiUI(){ apiBaseInput.value = getApiBase(); apiBaseLabel.textContent = getApiBase() || '(none)'; }
-    saveApiBtn.onclick = ()=>{ localStorage.setItem('DEMOS_API_BASE', apiBaseInput.value.trim()); setApiUI(); };
-    clearApiBtn.onclick = ()=>{ localStorage.removeItem('DEMOS_API_BASE'); setApiUI(); };
+    function setApiUI(){
+      try {
+        const apiBaseInput = document.getElementById('apiBase');
+        const apiBaseLabel = document.getElementById('apiBaseLabel');
+        const val = (typeof getApiBase === 'function' ? getApiBase() : "") || "";
+        if (apiBaseInput) apiBaseInput.value = val;
+        if (apiBaseLabel) apiBaseLabel.textContent = val || "";
+      } catch(_) {}
+    }
     setApiUI();
 
     function debug(line){ dbgpre.textContent += line + "\n"; }
@@ -279,9 +286,7 @@ function extractDistrictFromCensus(j) {
           party: t.party || (rec?.party)||"",
           norm: normalizeName([rec?.name?.first, rec?.name?.middle, rec?.name?.last].filter(Boolean).join(" "))
         };
-      }).filter(Boolean);
-      showMsg("Loaded members: " + CURRENT.length, "warn");
-    }
+      }).filter(Boolean);}
 
     function findMembers(where){
       const {state, district} = where;
@@ -321,7 +326,6 @@ function extractDistrictFromCensus(j) {
 
     async function callServerResolve(address){
       const apiBase = getApiBase();
-      if (!apiBase) throw new Error('No DEMOS_API_BASE configured');
       const url = apiBase.replace(/\/+$/,"") + '/resolve?address=' + encodeURIComponent(address);
       debug('API GET ' + url);
       const r = await fetch(url);
@@ -448,4 +452,4 @@ try {
   });
   </script>
 </body>
-</html
+</html>
