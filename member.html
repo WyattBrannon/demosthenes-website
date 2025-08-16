@@ -105,11 +105,88 @@
       return "I";
     }
 
-    // ------- Maverick fetcher -------
+    
+// --- Mavericks: flexible loaders ---
+async function fetchMaybe(url, kind="text"){
+  try {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) return null;
+    return kind === "json" ? r.json() : r.text();
+  } catch { return null; }
+}
+function parseTSVtoMap(tsv){
+  const lines = tsv.trim().split(/\r?\n/);
+  const header = lines.shift().split('\t').map(s=>s.trim());
+  const map = {};
+  for(const line of lines){
+    if(!line.trim()) continue;
+    const cols = line.split('\t');
+    const row = {};
+    header.forEach((h,i)=>row[h]=cols[i]);
+    const key = row.bioguide || row.bioguide_id || row.BIOGUIDE_ID || row.id;
+    if (!key) continue;
+    let mv = row.maverick_votes ?? row.maverick ?? row.mav ?? row.maverick_count;
+    let tv = row.total_votes ?? row.total ?? row.count;
+    let rate = row.maverick_rate ?? row.rate ?? row.ratio;
+    let window = row.window ?? row.sample ?? row.n;
+    if (mv!=null && tv!=null){
+      map[key] = { maverick_votes: Number(mv), total_votes: Number(tv), window: window?Number(window):undefined };
+    } else if (rate!=null){
+      const r = Number(rate);
+      map[key] = { maverick_rate: isFinite(r)?r:undefined, window: window?Number(window):undefined };
+    }
+  }
+  return map;
+}
+async function fetchMaverickFlexible(bioguide){
+  // Try aggregate JSON first
+  let obj = await fetchMaybe(`${BASE}/indexes/maverick_counts.json`, "json");
+  if (obj && obj[bioguide]) return obj[bioguide];
+
+  // Try aggregate TSV/CSV
+  let txt = await fetchMaybe(`${BASE}/indexes/maverick_counts.tsv`, "text");
+  if (!txt) txt = await fetchMaybe(`${BASE}/indexes/maverick_counts.csv`, "text");
+  if (txt){
+    // Normalize CSV->TSV if needed
+    if (/,/.test(txt.split('\n',1)[0]) && !/\t/.test(txt)) {
+      // crude CSV split fallback
+      const lines = txt.trim().split(/\r?\n/);
+      const head = lines.shift();
+      const tsv = [head.replace(/,/g,'\t'), *lines.map(l=>l.replace(/,/g,'\t'))].join('\n');
+      obj = parseTSVtoMap(tsv);
+    } else {
+      obj = parseTSVtoMap(txt);
+    }
+    if (obj && obj[bioguide]) return obj[bioguide];
+  }
+
+  // Per-member JSON then TSV
+  let per = await fetchMaybe(`${BASE}/indexes/maverick/${bioguide}.json`, "json");
+  if (per) return per;
+  let perTSV = await fetchMaybe(`${BASE}/indexes/maverick/${bioguide}.tsv`, "text");
+  if (perTSV){
+    const m = parseTSVtoMap(perTSV);
+    if (m && m[bioguide]) return m[bioguide];
+  }
+
+  return null;
+}
+
+// ------- Maverick fetcher -------
     const MAV_CACHE = { map: null, per: new Map() };
     async function fetchMaverick(bioguide){
-      if (MAV_CACHE.map === null) {
-        try { MAV_CACHE.map = await fetchJSON(`${BASE}/indexes/maverick_counts.json`); }
+  if (MAV_CACHE.map === null) {
+    // Try to load aggregate once via flexible loader
+    const agg = await fetchMaverickFlexible(bioguide);
+    if (agg) return agg;
+    MAV_CACHE.map = false; // don't retry in this session
+  }
+  if (MAV_CACHE.map && MAV_CACHE.map[bioguide]) return MAV_CACHE.map[bioguide];
+  if (MAV_CACHE.per.has(bioguide)) return MAV_CACHE.per.get(bioguide);
+  const per = await fetchMaverickFlexible(bioguide);
+  MAV_CACHE.per.set(bioguide, per || null);
+  return per || null;
+}/indexes/maverick_counts.json`); }
         catch { MAV_CACHE.map = false; }
       }
       if (MAV_CACHE.map && MAV_CACHE.map[bioguide]) return MAV_CACHE.map[bioguide];
@@ -142,9 +219,12 @@
       const out = document.getElementById("card");
       if (!bioguide){ out.textContent = "Missing ?bioguide=…"; return; }
 
-      // Load data
-      const yaml = jsyaml.load(await fetchText(YAML_URL));
-      const tsv = await fetchTSV(INDEX_URL);
+      // Load data in parallel for speed
+      const [yamlText, tsv] = await Promise.all([
+        fetchText(YAML_URL),
+        fetchTSV(INDEX_URL)
+      ]);
+      const yaml = jsyaml.load(yamlText);
 
       // Current members map
       const todayISO = new Date().toISOString().slice(0,10);
@@ -220,7 +300,7 @@
       const dim1Str = (dim1!=null && isFinite(dim1)) ? dim1.toFixed(3) : "N/A";
       const dim2Str = (dim2!=null && isFinite(dim2)) ? dim2.toFixed(3) : "N/A";
 
-      const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id});
+      const img = el("img",{class:"portrait",src:IMG_URL(info.bioguide_id),alt:info.name||info.bioguide_id,referrerpolicy:"no-referrer"});
       img.onerror = () => { img.style.visibility="hidden"; img.style.height="0"; };
 
       const header = el("h3");
@@ -268,6 +348,7 @@
         dim1Line.appendChild(document.createTextNode(`)`));
       }
 
+      const missedLine = el("div",{class:"kv"}, "Missed votes: …");
       const maverickLine = el("div",{class:"kv"}, "Maverick votes: …");
 
       const meta = el("div",{},[
@@ -278,6 +359,7 @@
         bar,
         axis,
         el("div",{class:"kv"} ,`DW-NOMINATE Dim2: ${dim2Str}`),
+        missedLine,
         maverickLine
       ]);
 
@@ -288,14 +370,18 @@
         if (mv && (mv.maverick_votes!=null) && (mv.total_votes!=null)) {
           const pct = mv.total_votes > 0 ? Math.round((mv.maverick_votes / mv.total_votes) * 100) : 0;
           const windowTxt = mv.window ? ` in last ${mv.window} votes` : "";
+          missedLine.textContent = `Missed votes: ${Number(mv.missed_votes||0)} of ${Number(mv.total_votes||0)+Number(mv.missed_votes||0)}`;
           maverickLine.textContent = `Maverick votes: ${mv.maverick_votes} of ${mv.total_votes} (${pct}%)${windowTxt}`;
         } else if (mv && mv.maverick_rate!=null && mv.window!=null) {
           const pct = Math.round(mv.maverick_rate * 100);
+          missedLine.textContent = `Missed votes: ${Number(mv.missed_votes||0)} of ${Number(mv.total_votes||0)+Number(mv.missed_votes||0)}`;
           maverickLine.textContent = `Maverick votes: ${pct}% in last ${mv.window} votes`;
         } else {
-          maverickLine.textContent = "Maverick votes: N/A";
+          missedLine.textContent = "Missed votes: N/A";
+        maverickLine.textContent = "Maverick votes: N/A";
         }
       }).catch(()=>{
+        missedLine.textContent = "Missed votes: N/A";
         maverickLine.textContent = "Maverick votes: N/A";
       });
     }
