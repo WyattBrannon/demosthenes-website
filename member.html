@@ -292,11 +292,11 @@
         if (mv && (mv.maverick_votes!=null) && (mv.total_votes!=null)) {
           const pct = mv.total_votes > 0 ? Math.round((mv.maverick_votes / mv.total_votes) * 100) : 0;
           const windowTxt = mv.window ? ` in last ${mv.window} votes` : "";
-          missedLine.textContent = `Missed votes: ${Number(mv.missed_votes||0)} of ${Number(mv.total_votes||0)+Number(mv.missed_votes||0)}`;
+          missedLine.textContent = (()=>{ const miss=Number(mv.missed_votes||0); const tot=Number(mv.total_votes||0)+miss; const pct=tot?((miss/tot)*100).toFixed(1):"0.0"; return `Missed votes: ${miss} of ${tot} (${pct}%)`; })();
           maverickLine.textContent = `Maverick votes: ${mv.maverick_votes} of ${mv.total_votes} (${pct}%)${windowTxt}`;
         } else if (mv && mv.maverick_rate!=null && mv.window!=null) {
           const pct = Math.round(mv.maverick_rate * 100);
-          missedLine.textContent = `Missed votes: ${Number(mv.missed_votes||0)} of ${Number(mv.total_votes||0)+Number(mv.missed_votes||0)}`;
+          missedLine.textContent = (()=>{ const miss=Number(mv.missed_votes||0); const tot=Number(mv.total_votes||0)+miss; const pct=tot?((miss/tot)*100).toFixed(1):"0.0"; return `Missed votes: ${miss} of ${tot} (${pct}%)`; })();
           maverickLine.textContent = `Maverick votes: ${pct}% in last ${mv.window} votes`;
         } else {
           missedLine.textContent = "Missed votes: N/A";
