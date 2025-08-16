@@ -1,4 +1,4 @@
-// member.app.js — v2025-08-16-4 — loads /members/{bioguide}.json and renders four sections
+// member.app.js — v2025-08-16-7 — loads /members/{bioguide}.json and renders four sections
 (function(){
   "use strict";
 
@@ -25,8 +25,33 @@
     return "(" + (state||"??") + ")";
   }
 
+  // --- Helper: fallback to get name from legislators-current.yaml if JSON lacks it
+  function fetchNameFromYAML(DB, bioguide){
+    var url = DB + "/legislators-current.yaml";
+    return fetch(url, {cache:"no-store"}).then(function(r){
+      if(!r.ok) return null;
+      return r.text();
+    }).then(function(txt){
+      if(!txt) return null;
+      var idx = txt.indexOf("bioguide: " + bioguide);
+      if (idx < 0) idx = txt.indexOf("bioguide: '" + bioguide + "'");
+      if (idx < 0) idx = txt.indexOf('bioguide: "' + bioguide + '"');
+      if (idx < 0) return null;
+      var start = txt.lastIndexOf("\n- ", idx); if (start < 0) start = txt.lastIndexOf("\n- id:", idx);
+      if (start < 0) start = Math.max(0, idx - 200);
+      var snippet = txt.slice(start, idx + 400);
+      var m = snippet.match(/official_full:\s*["']?([^"\n]+)["']?/);
+      if (m && m[1]) return m[1].trim();
+      var first = (snippet.match(/first:\s*["']?([^"\n]+)["']?/)||[])[1];
+      var middle= (snippet.match(/middle:\s*["']?([^"\n]+)["']?/)||[])[1];
+      var last  = (snippet.match(/last:\s*["']?([^"\n]+)["']?/)||[])[1];
+      var parts = []; if(first) parts.push(first.trim()); if(middle) parts.push(middle.trim()); if(last) parts.push(last.trim());
+      return parts.length ? parts.join(" ") : null;
+    }).catch(function(){ return null; });
+  }
+
   function renderDial(container, valuePct, centerText, label, tooltip){
-    var size=140, stroke=12, r=(size/2)-stroke, C=2*Math.PI*r;
+    var size=120, stroke=12, r=(size/2)-stroke, C=2*Math.PI*r;
     var pct = (valuePct==null || isNaN(valuePct)) ? 0 : Math.max(0,Math.min(100,Number(valuePct)));
     var offset = C*(1 - pct/100);
     var wrap=document.createElement('div'); wrap.className='dial'; if (tooltip) wrap.title=tooltip;
@@ -65,39 +90,52 @@
     }).then(function(data){
       if(!data || !data.identity || !data.alignment){ if (header) header.textContent="Invalid member JSON."; setErr("JSON missing identity/alignment"); return; }
 
-      // ---- 1) Header section
+      // ---- Header section
       var id = data.identity || {};
-      var party = id.party || "";
-      var state = id.state || "";
-      var district = id.district || null;
-      var chamber = (id.chamber && (""+id.chamber).toLowerCase()) || (function(){
-  var d = id.district;
-  if (typeof d === "string" && d.length) return "house";
-  if (typeof d === "number") return "house";
-  if (d === "AL") return "house";
-  return "senate";
-})();
+
+      // Name preference
       var displayName = (data.name && data.name.official_full) ? data.name.official_full
-  : (id.official_full || id.display_name || (id.first && id.last ? (id.first + " " + id.last) : null) || data.bioguide);
+        : (id.official_full || id.display_name || ((id.first && id.last) ? (id.first + " " + id.last) : null) || "");
 
       header.innerHTML = "";
-      var img = new Image(); img.className="portrait"; img.alt=displayName||"Portrait"; img.src = DB + "/images/" + data.bioguide + ".jpg"; img.onerror=function(){ img.style.display='none'; };
-      var nameEl = document.createElement('div'); nameEl.className='name'; nameEl.textContent = displayName;
+      var party = id.party || "";
+
+      // Inline name + pill
+      var nameRow = document.createElement('div'); nameRow.className='row'; nameRow.style.alignItems='center';
+      var nameEl = document.createElement('div'); nameEl.className='name'; nameEl.textContent = displayName || "(Name unavailable)";
       var pill = document.createElement('span'); pill.className='pill ' + partyLetter(party); pill.textContent = partyLetter(party);
+      nameRow.appendChild(nameEl); nameRow.appendChild(pill);
+
+      var img = new Image(); img.className="portrait"; img.alt=(displayName||"Portrait"); img.src = DB + "/images/" + data.bioguide + ".jpg"; img.onerror=function(){ img.style.display='none'; };
+
+      // Chamber detection
+      var chamber = (id.chamber && (""+id.chamber).toLowerCase());
+      if (!chamber) {
+        var d = id.district;
+        if (typeof d === "string" && d.length) chamber = "house";
+        else if (typeof d === "number") chamber = "house";
+        else if (d === "AL") chamber = "house";
+        else chamber = "senate";
+      }
+      var state = id.state || "";
+      var district = id.district || null;
       var seat = document.createElement('div'); seat.className='muted'; seat.textContent = (chamber==="senate"?"Senator":"Representative") + " " + seatText(chamber, state, district);
+
       var tenure = document.createElement('div'); tenure.className='muted'; tenure.textContent = "Tenure: " + (id.tenure_years==null?"?":id.tenure_years) + " years";
 
+      // Committees (filter out subcommittees)
       var commWrap = document.createElement('div'); commWrap.className='stack';
       var commTitle = document.createElement('div'); commTitle.className='section-title'; commTitle.textContent = "Committees";
       var commList = document.createElement('ul'); commList.className='list';
       var committees = Array.isArray(id.committees) ? id.committees : [];
-committees = committees.filter(function(c){
-  var code = (c && (c.code || c.id || c.committee || "")) + "";
-  var name = (c && c.name) ? c.name : "";
-  if (/\d$/.test(code)) return false; // drop subcommittees with numeric codes
-  if (/subcommittee/i.test(name)) return false; // heuristically drop
-  return true;
-});
+      committees = committees.filter(function(c){
+        var code = (c && (c.code || c.id || c.committee || "")) + "";
+        var name = (c && c.name) ? c.name : "";
+        if (/\d$/.test(code)) return false;         // codes ending in digits
+        if (/^S\d+/.test(code)) return false;       // codes like S123
+        if (/subcommittee/i.test(name)) return false;
+        return true;
+      });
       if (committees.length){
         committees.forEach(function(c){
           var li=document.createElement('li');
@@ -109,26 +147,33 @@ committees = committees.filter(function(c){
         var li=document.createElement('li'); li.textContent="N/A"; commList.appendChild(li);
       }
       commWrap.appendChild(commTitle); commWrap.appendChild(commList);
+
       var row = document.createElement('div'); row.className='row';
-      var right = document.createElement('div'); right.className='stack'; right.appendChild(nameEl); right.appendChild(pill); right.appendChild(seat); right.appendChild(tenure); right.appendChild(commWrap);
+      var right = document.createElement('div'); right.className='stack'; right.appendChild(nameRow); right.appendChild(seat); right.appendChild(tenure); right.appendChild(commWrap);
       row.appendChild(img); row.appendChild(right);
       header.appendChild(row);
 
-      // ---- 2) Voting record dials
+      // ---- Voting record dials
       var dials = byId('dials');
       var al = data.alignment || {};
       var dim1 = (typeof al.dw_nominate_dim1 === "number") ? al.dw_nominate_dim1 : NaN;
       var ideologyPct = isNaN(dim1) ? NaN : Math.max(0, Math.min(100, ((dim1 + 1)/2)*100));
-      renderDial(dials, ideologyPct, (isNaN(dim1)?"N/A":dim1.toFixed(2)), "Ideology", "−1 liberal … +1 conservative");
 
+      renderDial(dials, ideologyPct, (isNaN(dim1)?"N/A":dim1.toFixed(2)), "Ideology", "−1 liberal … +1 conservative");
       var pu = (typeof al.party_unity_pct === "number") ? (al.party_unity_pct * 100) : NaN;
       renderDial(dials, pu, (isNaN(pu)?"—":String(Math.round(pu))), "Party Unity", "100 − (% maverick votes)");
-
       var total = Number(al.total_votes||0);
       var missed = Number(al.missed_votes||0);
       var denom = total + missed;
       var reliability = denom ? (100 - (missed / denom) * 100) : NaN;
       renderDial(dials, reliability, (isNaN(reliability)?"—":String(Math.round(reliability))), "Vote Reliability", "100 − (missed / (total + missed))");
+
+      // If name still missing, try YAML fallback
+      if (!displayName){
+        fetchNameFromYAML(DB, data.bioguide).then(function(nm){
+          if(nm){ nameEl.textContent = nm; }
+        });
+      }
     }).catch(function(e){
       if(e){ setErr("Runtime error: " + (e.message || e)); }
     });
