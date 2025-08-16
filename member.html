@@ -4,8 +4,7 @@
   <meta charset="utf-8" />
   <title>Demosthenes — Member Report</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Demosthenes member.csp.html build: vJSON-2025-08-16-3 -->
-  <meta name="demosthenes-build" content="vJSON-2025-08-16-3">
+  <!-- build: member.html · v2025-08-16-4 -->
   <style>
     :root { --fg:#111827; --muted:#6b7280; --card:#ffffff; --border:#e5e7eb; --bg:#f8fafc; --accent:#2563eb; --maxw:720px; --pad:16px; --gap:12px; }
     *, *::before, *::after { box-sizing: border-box; }
@@ -36,18 +35,15 @@
     .dial{ display:flex; flex-direction:column; align-items:center; gap:8px; }
     .dial svg{ display:block; width:140px; height:140px; }
     .dial .label{ font-weight:700; }
-    .dial .value{ font-weight:800; font-size:1.1rem; }
     #dbg { font-size:.9rem; }
     #dbg .err { color:#991b1b; }
     #dbg code { background:#fee2e2; padding:.1rem .25rem; border-radius:.25rem; }
-    .badge { font-size:.8rem; color:var(--muted); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <div class="title">Demosthenes</div>
-      <div class="badge">member.csp.html vJSON-2025-08-16-3</div>
       <div class="subtitle">Data-rich reports on your congresspeople</div>
       <noscript><div class="card" style="margin:12px auto; max-width:720px; border-color:#ef4444; color:#991b1b;">
         JavaScript is disabled or blocked by Content Security Policy. This page needs JS to fetch the member JSON.
@@ -61,19 +57,23 @@
           <span id="dbg" class="muted"></span>
         </nav>
 
+        <!-- 1) Header section -->
         <section id="headerCard" class="card">Loading…</section>
 
+        <!-- 2) Voting record dials -->
         <section class="card">
           <div class="section-title">Voting Record</div>
           <div id="dials" class="grid three"></div>
           <div class="muted" style="font-size:.9rem;">DW-NOMINATE ranges from −1 (liberal) to +1 (conservative). Party unity and vote reliability are computed from the ETL JSON.</div>
         </section>
 
+        <!-- 3) Signature Work (placeholder) -->
         <section class="card">
           <div class="section-title">Signature Work</div>
           <div class="muted">Coming soon.</div>
         </section>
 
+        <!-- 4) Funding Overview (placeholder) -->
         <section class="card">
           <div class="section-title">Funding Overview</div>
           <div class="muted">Coming soon.</div>
@@ -82,6 +82,6 @@
     </main>
   </div>
 
-  <script src="./member.bundle.js" defer></script>
+  <script src="./member.app.js?v=20250816-4" defer></script>
 </body>
 </html>
