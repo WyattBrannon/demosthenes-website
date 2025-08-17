@@ -5,6 +5,7 @@
   function setErr(html){var d=byId('dbg'); if(d) d.innerHTML='<span class="err">'+html+'</span>'; var h=byId('headerCard'); if(h&&/Loading|Fetching/.test(h.textContent)) h.textContent='Error — see message above.';}
   function pad2(n){n=String(n);return n.length<2?('0'+n):n;}
   function partyLetter(s){var t=(s||'').toUpperCase(); if(t.indexOf('D')===0||t==='100')return'D'; if(t.indexOf('R')===0||t==='200')return'R'; return'I';}
+  function partyNoun(letter){ return letter==='R' ? 'Republicans' : 'Democrats'; }
   function seatText(chamber,state,district){var c=(chamber||'').toLowerCase(); if(c==='house'||c==='rep'){var dd=(district===''||district==='0'||district==null)?'AL':pad2(district); return '('+(state||'??')+'-'+dd+')';} return '('+(state||'??')+')';}
 
   function renderDial(container, valuePct, centerText, label, tooltip, strokeColor){
@@ -160,28 +161,60 @@ function extractNameFromBlock(blockLines){
       renderDial(dials, isNaN(mag)?NaN:(mag*100), magDisplay, 'Ideology', 'Left (−) to Right (+)', colorIdeo);
 
       (function(){ 
-        var pct = (typeof al.dim1_percentile_chamber === 'number') ? Math.round(al.dim1_percentile_chamber) : null;
-        if (pct != null) {
-          var firstDial = dials.querySelector('.dial');
-          if (firstDial) {
-            var sub = document.createElement('div');
-            sub.className = 'muted';
-            sub.style.fontSize = '0.9rem';
-            sub.style.textAlign = 'center';
-            sub.textContent = (dim1 < 0) ? ('To the left of ' + pct + '% of Congress') : ('To the right of ' + pct + '% of Congress');
-            firstDial.appendChild(sub);
-          }
+        var firstDial = dials.querySelector('.dial');
+        var dirParty = al.dim1_direction_party;
+        var pctParty = (typeof al.dim1_percentile_party === 'number') ? Math.round(al.dim1_percentile_party) : null;
+        var pLetter = partyLetter(id.party);
+        var pNoun = partyNoun(pLetter);
+        if (dirParty && pctParty != null && firstDial) {
+          var subP = document.createElement('div');
+          subP.className = 'muted';
+          subP.style.fontSize = '0.9rem';
+          subP.style.textAlign = 'center';
+          var side = (dirParty === 'left' ? 'left' : (dirParty === 'right' ? 'right' : 'center'));
+          subP.textContent = (side === 'center') ? ('At the center of '+pNoun) : ('To the ' + side + ' of ' + pctParty + '% of ' + pNoun);
+          firstDial.appendChild(subP);
         }
-      })();
+      })();;
 
       var pu=(typeof al.party_unity_pct==='number')?(al.party_unity_pct*100):NaN;
       var puDisplay=(isNaN(pu)?'—':String(Math.round(pu))+'%');
       renderDial(dials, pu, puDisplay, 'Party Unity', '100 − (% maverick votes)', '#2563eb');
+      (function(){
+        var dialsList = dials.querySelectorAll('.dial');
+        var puDial = dialsList && dialsList[1];
+        var pctPU = (typeof al.party_unity_percentile_party === 'number') ? Math.round(al.party_unity_percentile_party) : null;
+        var pLetter = partyLetter(id.party);
+        var pNoun = partyNoun(pLetter);
+        if (puDial && pctPU != null) {
+          var sub = document.createElement('div');
+          sub.className = 'muted';
+          sub.style.fontSize = '0.9rem';
+          sub.style.textAlign = 'center';
+          sub.textContent = 'More maverick than ' + pctPU + '% of ' + pNoun;
+          puDial.appendChild(sub);
+        }
+      })();
 
       var total=Number(al.total_votes||0); var missed=Number(al.missed_votes||0); var denom=total+missed;
       var reliability=denom?(100-(missed/denom)*100):NaN;
       var relDisplay=(isNaN(reliability)?'—':String(Math.round(reliability))+'%');
       renderDial(dials, reliability, relDisplay, 'Vote Reliability', '100 − (missed / (total + missed))', '#2563eb');
+      (function(){
+        var dialsList = dials.querySelectorAll('.dial');
+        var relDial = dialsList && dialsList[2];
+        var pctRel = (typeof al.reliability_percentile_party === 'number') ? Math.round(al.reliability_percentile_party) : null;
+        var pLetter = partyLetter(id.party);
+        var pNoun = partyNoun(pLetter);
+        if (relDial && pctRel != null) {
+          var sub = document.createElement('div');
+          sub.className = 'muted';
+          sub.style.fontSize = '0.9rem';
+          sub.style.textAlign = 'center';
+          sub.textContent = 'More reliable than ' + pctRel + '% of ' + pNoun;
+          relDial.appendChild(sub);
+        }
+      })();
 
     }).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
   }
