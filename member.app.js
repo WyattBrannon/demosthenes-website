@@ -25,7 +25,6 @@
     container.appendChild(wrap);
   }
 
-  
   function findBlockForBioguide(yamlText, bioguide){
     var lines = yamlText.split(/\r?\n/);
     var blocks = [];
@@ -54,7 +53,33 @@
     }
     return found;
   }
-function extractNameFromBlock(blockLines){
+
+  // NEW: YAML-only helper to read latest term type (‘sen’/‘rep’) and map to 'senate'/'house'
+  function latestTermTypeFromBlock(blockLines){
+    if (!blockLines || !blockLines.length) return '';
+    // Find the 'terms:' section and collect all '- type: …' entries beneath it
+    var start = -1, baseIndent = 0;
+    for (var i=0;i<blockLines.length;i++){
+      var m = /^(\s*)terms\s*:\s*$/.exec(blockLines[i]);
+      if (m){ start = i+1; baseIndent = m[1].length; break; }
+    }
+    if (start === -1) return '';
+    var last = '';
+    for (var j=start;j<blockLines.length;j++){
+      var L = blockLines[j] || '';
+      var indent = (L.match(/^\s*/)||[''])[0].length;
+      if (indent <= baseIndent && !/^\s*-/.test(L)) break; // left the terms list
+      var t = /-\s*type\s*:\s*(\w+)/.exec(L);
+      if (t){
+        var v = (t[1]||'').toLowerCase();
+        if (v === 'sen' || v === 'senate') last = 'senate';
+        else if (v === 'rep' || v === 'house') last = 'house';
+      }
+    }
+    return last;
+  }
+
+  function extractNameFromBlock(blockLines){
     if (!blockLines) return null;
     var inName = false;
     var nameIndent = 0;
@@ -125,17 +150,12 @@ function extractNameFromBlock(blockLines){
 
       var img=new Image(); img.className='portrait'; img.alt=(displayName||'Portrait'); img.src=DB+'/images/'+bioguide+'.jpg'; img.onerror=function(){img.style.display='none';};
 
-      var chamber=(id.chamber&&(''+id.chamber).toLowerCase());
-      if(!chamber){
-        var d=id.district;
-        var committees = Array.isArray(id.committees)? id.committees : [];
-        var hasH = committees.some(function(c){ var code=String((c&& (c.code||c.id||c.committee||''))); return /^H/.test(code); });
-        var hasS = committees.some(function(c){ var code=String((c&& (c.code||c.id||c.committee||''))); return /^S/.test(code); });
-        if (d==='AL' || typeof d==='number' || (typeof d==='string' && d.length)) chamber='house';
-        else if (hasH) chamber='house';
-        else if (hasS) chamber='senate';
-        else chamber='house';
-      }
+      // YAML-only chamber resolution (single source of truth)
+      var chamber=(function(){ 
+        try { return latestTermTypeFromBlock(block) || ''; } 
+        catch(e){ return ''; } 
+      })();
+
       var state=id.state||''; var district=id.district||null;
       var seat=document.createElement('div'); seat.className='muted'; seat.textContent=(chamber==='senate'?'Senator':'Representative')+' '+seatText(chamber,state,district);
 
@@ -217,84 +237,79 @@ function extractNameFromBlock(blockLines){
         }
       })();
 
-    
-/* KEY VOTES (minimal addition per user request) */
-(function(){
-  try {
-    // Find the "Voting Record" card and the "Key Votes" subheader
-    var cards = document.querySelectorAll('.card');
-    var vr = null;
-    for (var i=0;i<cards.length;i++){
-      var h = cards[i].querySelector('.section-title');
-      if (h && (h.textContent||'').trim() === 'Voting Record'){ vr = cards[i]; break; }
-    }
-    if (!vr) return;
-    var headers = vr.querySelectorAll('.section-title');
-    var kvHeader = null;
-    for (var j=0;j<headers.length;j++){ if ((headers[j].textContent||'').trim() === 'Recent Major Votes'){ kvHeader = headers[j]; break; } }
-    if (!kvHeader) return;
+      /* KEY VOTES (existing) — left as-is */
+      (function(){
+        try {
+          var cards = document.querySelectorAll('.card');
+          var vr = null;
+          for (var i=0;i<cards.length;i++){
+            var h = cards[i].querySelector('.section-title');
+            if (h && (h.textContent||'').trim() === 'Voting Record'){ vr = cards[i]; break; }
+          }
+          if (!vr) return;
+          var headers = vr.querySelectorAll('.section-title');
+          var kvHeader = null;
+          for (var j=0;j<headers.length;j++){ if ((headers[j].textContent||'').trim() === 'Recent Major Votes'){ kvHeader = headers[j]; break; } }
+          if (!kvHeader) return;
 
-    // Create or reuse a container immediately after the subheader
-    var root = kvHeader.nextElementSibling;
-    var needNew = !(root && root.classList && root.classList.contains('stack') && root.id === 'recentMajorVotes');
-    if (needNew){
-      root = document.createElement('div');
-      root.className = 'stack';
-      root.id = 'recentMajorVotes';
-      kvHeader.insertAdjacentElement('afterend', root);
-    } else {
-      root.innerHTML = '';
-    }
+          var root = kvHeader.nextElementSibling;
+          var needNew = !(root && root.classList && root.classList.contains('stack') && root.id === 'recentMajorVotes');
+          if (needNew){
+            root = document.createElement('div');
+            root.className = 'stack';
+            root.id = 'recentMajorVotes';
+            kvHeader.insertAdjacentElement('afterend', root);
+          } else {
+            root.innerHTML = '';
+          }
 
-    // Access the already-fetched member JSON if present in a nearby scope
-    var data = (typeof results !== 'undefined' && results[0]) ? results[0] : (typeof window !== 'undefined' && window.__memberData) ? window.__memberData : {};
-    // Fallback: try to locate a likely global variable (no-op if not found)
+          var data = (typeof results !== 'undefined' && results[0]) ? results[0] : (typeof window !== 'undefined' && window.__memberData) ? window.__memberData : {};
+          var kv = data && (data.key_votes || data.keyVotes || data.votes_key || data.highlight_votes) || [];
+          if (!Array.isArray(kv) || kv.length === 0){
+            var nd=document.createElement('div'); nd.className='muted'; nd.textContent='No recent major votes available.'; root.appendChild(nd); return;
+          }
 
-    var kv = data && (data.key_votes || data.keyVotes || data.votes_key || data.highlight_votes) || [];
-    if (!Array.isArray(kv) || kv.length === 0){
-      var nd=document.createElement('div'); nd.className='muted'; nd.textContent='No recent major votes available.'; root.appendChild(nd); return;
-    }
+          kv.slice(0,3).forEach(function(v){
+            var row = document.createElement('div');
+            row.className = 'stack';
+            row.style.borderTop = '1px solid var(--border)';
+            row.style.paddingTop = '8px';
 
-    kv.slice(0,3).forEach(function(v){
-      var row = document.createElement('div');
-      row.className = 'stack';
-      row.style.borderTop = '1px solid var(--border)';
-      row.style.paddingTop = '8px';
+            var q = v && (v.question || v.title || v.bill || v.id) || 'Vote';
+            var how = v && (v.vote || v.member_vote || v.member_position || v.position || v.choice) || '';
+            var mv = (v && v.maverick_vote === true) ? ' (maverick)' : '';
+            var date = v && (v.date || v.voted_at || v.roll_date) || '';
 
-      var q = v && (v.question || v.title || v.bill || v.id) || 'Vote';
-      var how = v && (v.vote || v.member_vote || v.member_position || v.position || v.choice) || '';
-      var mv = (v && v.maverick_vote === true) ? ' (maverick)' : '';
-      var date = v && (v.date || v.voted_at || v.roll_date) || '';
+            var head = document.createElement('div');
+            var strong = document.createElement('strong'); strong.textContent = String(q); head.appendChild(strong);
+            if (date) {
+              var sep = document.createTextNode(' • ');
+              head.appendChild(sep);
+              var span = document.createElement('span'); span.className = 'muted';
+              try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
+              head.appendChild(span);
+            }
+            row.appendChild(head);
 
-      var head = document.createElement('div');
-      var strong = document.createElement('strong'); strong.textContent = String(q); head.appendChild(strong);
-      if (date) {
-        var sep = document.createTextNode(' • ');
-        head.appendChild(sep);
-        var span = document.createElement('span'); span.className = 'muted';
-        try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
-        head.appendChild(span);
-      }
-      row.appendChild(head);
+            var desc = v && (v.vote_desc || v.dtl_desc) || '';
+            if (desc) {
+              var dline = document.createElement('div');
+              dline.className = 'muted';
+              dline.textContent = String(desc);
+              row.appendChild(dline);
+            }
 
-      // Description line: prefer vote_desc, else fall back to dtl_desc
-      var desc = v && (v.vote_desc || v.dtl_desc) || '';
-      if (desc) {
-        var dline = document.createElement('div');
-        dline.className = 'muted';
-        dline.textContent = String(desc);
-        row.appendChild(dline);
-      }
+            var meta = document.createElement('div');
+            meta.className = 'muted';
+            meta.textContent = (how ? ('Position: ' + how + mv) : '');
+            row.appendChild(meta);
 
-      var meta = document.createElement('div');
-      meta.className = 'muted';
-      meta.textContent = (how ? ('Position: ' + how + mv) : '');
-      row.appendChild(meta);
+            root.appendChild(row);
+          });
+        } catch(e){ /* swallow errors */ }
+      })();
 
-      root.appendChild(row);
-    });
-  } catch(e){ /* minimal addition: swallow errors to avoid altering original behavior */ }
-})();}).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
+    }).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded', main);} else {main();}
 })();
