@@ -21,7 +21,7 @@
       +           ' stroke-dasharray="'+C+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+(size/2)+' '+(size/2)+')"></circle>'
       +   '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="20" font-weight="800">'+centerText+'</text>'
       + '</svg>'
-      + '<div class="label">'+label+'</div>';
+      + '<div class="label" style="text-align:center">'+label+'</div>';
     container.appendChild(wrap);
   }
 
@@ -102,8 +102,8 @@ function extractNameFromBlock(blockLines){
 
     setDbg('<code>DATA_BASE</code> = '+DB+' · <code>bioguide</code> = '+(bioguide||'(missing)')+' · <code>URL</code> = '+(bioguide?memberURL:'(n/a)'));
 
-    var header=byId('headerCard'); if(!bioguide){ if(header) header.textContent='Missing ?bioguide=…'; return; }
-    if(header) header.textContent='Fetching member JSON & YAML…';
+    var header=byId('headerCard'); if(!bioguide){ if(header) header.textContent='Missing ?bioguide=...'; return; }
+    if(header) header.textContent='Fetching member JSON & YAML...';
 
     Promise.all([
       fetch(memberURL,{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' for '+memberURL); return r.json(); }),
@@ -183,7 +183,8 @@ function extractNameFromBlock(blockLines){
       (function(){
         var dialsList = dials.querySelectorAll('.dial');
         var puDial = dialsList && dialsList[1];
-        var pctPU = (typeof al.party_unity_percentile_party === 'number') ? Math.round(al.party_unity_percentile_party) : null;
+        var pctPUraw = (typeof al.party_unity_percentile_party === 'number') ? Math.round(al.party_unity_percentile_party) : null;
+        var pctPU = (pctPUraw == null ? null : Math.max(0, Math.min(100, 100 - pctPUraw)));
         var pLetter = partyLetter(id.party);
         var pNoun = partyNoun(pLetter);
         if (puDial && pctPU != null) {
@@ -199,7 +200,7 @@ function extractNameFromBlock(blockLines){
       var total=Number(al.total_votes||0); var missed=Number(al.missed_votes||0); var denom=total+missed;
       var reliability=denom?(100-(missed/denom)*100):NaN;
       var relDisplay=(isNaN(reliability)?'—':String(Math.round(reliability))+'%');
-      renderDial(dials, reliability, relDisplay, 'Vote Reliability', '100 − (missed / (total + missed))', '#2563eb');
+      renderDial(dials, reliability, relDisplay, 'Vote Attendance', '100 − (missed / (total + missed))', '#2563eb');
       (function(){
         var dialsList = dials.querySelectorAll('.dial');
         var relDial = dialsList && dialsList[2];
