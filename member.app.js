@@ -217,7 +217,84 @@ function extractNameFromBlock(blockLines){
         }
       })();
 
-    }).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
+    
+/* KEY VOTES (minimal addition per user request) */
+(function(){
+  try {
+    // Find the "Voting Record" card and the "Key Votes" subheader
+    var cards = document.querySelectorAll('.card');
+    var vr = null;
+    for (var i=0;i<cards.length;i++){
+      var h = cards[i].querySelector('.section-title');
+      if (h && (h.textContent||'').trim() === 'Voting Record'){ vr = cards[i]; break; }
+    }
+    if (!vr) return;
+    var headers = vr.querySelectorAll('.section-title');
+    var kvHeader = null;
+    for (var j=0;j<headers.length;j++){ if ((headers[j].textContent||'').trim() === 'Recent Major Votes'){ kvHeader = headers[j]; break; } }
+    if (!kvHeader) return;
+
+    // Create or reuse a container immediately after the subheader
+    var root = kvHeader.nextElementSibling;
+    var needNew = !(root && root.classList && root.classList.contains('stack') && root.id === 'recentMajorVotes');
+    if (needNew){
+      root = document.createElement('div');
+      root.className = 'stack';
+      root.id = 'recentMajorVotes';
+      kvHeader.insertAdjacentElement('afterend', root);
+    } else {
+      root.innerHTML = '';
+    }
+
+    // Access the already-fetched member JSON if present in a nearby scope
+    var data = (typeof results !== 'undefined' && results[0]) ? results[0] : (typeof window !== 'undefined' && window.__memberData) ? window.__memberData : {};
+    // Fallback: try to locate a likely global variable (no-op if not found)
+
+    var kv = data && (data.key_votes || data.keyVotes || data.votes_key || data.highlight_votes) || [];
+    if (!Array.isArray(kv) || kv.length === 0){
+      var nd=document.createElement('div'); nd.className='muted'; nd.textContent='No recent major votes available.'; root.appendChild(nd); return;
+    }
+
+    kv.slice(0,3).forEach(function(v){
+      var row = document.createElement('div');
+      row.className = 'stack';
+      row.style.borderTop = '1px solid var(--border)';
+      row.style.paddingTop = '8px';
+
+      var q = v && (v.question || v.title || v.bill || v.id) || 'Vote';
+      var how = v && (v.vote || v.member_vote || v.member_position || v.position || v.choice) || '';
+      var mv = (v && v.maverick_vote === true) ? ' (maverick)' : '';
+      var date = v && (v.date || v.voted_at || v.roll_date) || '';
+
+      var head = document.createElement('div');
+      var strong = document.createElement('strong'); strong.textContent = String(q); head.appendChild(strong);
+      if (date) {
+        var sep = document.createTextNode(' • ');
+        head.appendChild(sep);
+        var span = document.createElement('span'); span.className = 'muted';
+        try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
+        head.appendChild(span);
+      }
+      row.appendChild(head);
+
+      // Description line: prefer vote_desc, else fall back to dtl_desc
+      var desc = v && (v.vote_desc || v.dtl_desc) || '';
+      if (desc) {
+        var dline = document.createElement('div');
+        dline.className = 'muted';
+        dline.textContent = String(desc);
+        row.appendChild(dline);
+      }
+
+      var meta = document.createElement('div');
+      meta.className = 'muted';
+      meta.textContent = (how ? ('Position: ' + how + mv) : '');
+      row.appendChild(meta);
+
+      root.appendChild(row);
+    });
+  } catch(e){ /* minimal addition: swallow errors to avoid altering original behavior */ }
+})();}).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded', main);} else {main();}
 })();
