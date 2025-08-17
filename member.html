@@ -45,8 +45,7 @@
     #dbg .err { color:#991b1b; }
     #dbg code { background:#fee2e2; padding:.1rem .25rem; border-radius:.25rem; }
     .dial-note{ color:var(--muted); font-size:0.9rem; text-align:center; margin-top:0.5rem; }
-    .dial .label{ text-align:center; }
-</style>
+  </style>
 </head>
 <body>
   <div class="wrap">
@@ -91,5 +90,63 @@
   </div>
 
   <script src="./member.app.js?v=v2025-08-16-33" defer></script>
+</body>
+</html>
+    .pill.D{ background:#dbeafe; color:#1e3a8a; } .pill.R{ background:#fee2e2; color:#991b1b; } .pill.I{ background:#e5e7eb; color:#374151; }
+    .list{ margin:0; padding-left:1.1rem; }
+    .section-title{ font-weight:700; font-size:1.05rem; }
+    .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
+    .grid.three{ grid-template-columns: 1fr 1fr 1fr; } /* side-by-side on mobile */
+    .dial{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .dial svg{ display:block; width:120px; height:120px; }
+    #dbg { font-size:.9rem; }
+    #dbg .err { color:#991b1b; }
+    #dbg code { background:#fee2e2; padding:.1rem .25rem; border-radius:.25rem; }
+    .dial-note{ color:var(--muted); font-size:0.9rem; text-align:center; margin-top:0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">Demosthenes</div>
+      <div class="badge">v2025-08-16-32</div>
+      <div class="subtitle">Data-rich reports on your congresspeople</div>
+      <noscript><div class="card" style="margin:12px auto; max-width:720px; border-color:#ef4444; color:#991b1b;">
+        JavaScript is disabled or blocked by Content Security Policy. This page needs JS to fetch the member JSON.
+      </div></noscript>
+    </header>
+    <main>
+      <div class="container stack">
+        <nav class="nav" aria-label="Breadcrumb">
+          <a class="btn" href="index.html">← Back</a>
+          <span class="muted">Member report</span>
+          <span id="dbg" class="muted"></span>
+        </nav>
+
+        <section id="headerCard" class="card">Loading…</section>
+
+        <section class="card">
+          <div class="section-title">Voting Record</div>
+          <div id="dials" class="grid three"></div>
+          <div class="dial-note">
+            <p>Ideology is scored 0 (most moderate) to 100 (most extreme). A blue dial indicates liberal ideology, while a red dial indicates conservative ideology.</p>
+          </div>
+          <div class="section-title">Key Votes</div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Signature Work</div>
+          <div class="muted">Coming soon.</div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Funding Overview</div>
+          <div class="muted">Coming soon.</div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="./member.app.js?v=v2025-08-16-32" defer></script>
 </body>
 </html>
