@@ -269,8 +269,12 @@
             var nd=document.createElement('div'); nd.className='muted'; nd.textContent='No recent major votes available.'; root.appendChild(nd); return;
           }
 
-          kv.slice(0,3).forEach(function(v){
-            var row = document.createElement('div');
+          var expanded = false;
+function renderKeyVotes(){
+  root.innerHTML = '';
+  var list = expanded ? kv : kv.slice(0, Math.min(3, kv.length));
+  list.forEach(function(v){
+var row = document.createElement('div');
             row.className = 'stack';
             row.style.borderTop = '1px solid var(--border)';
             row.style.paddingTop = '8px';
@@ -303,10 +307,21 @@
             meta.className = 'muted';
             meta.textContent = (how ? ('Position: ' + how + mv) : '');
             row.appendChild(meta);
-
-            root.appendChild(row);
-          });
-        } catch(e){ /* swallow errors */ }
+    root.appendChild(row);
+  });
+  if (kv.length > 3){
+    var ctr = document.createElement('div');
+    ctr.style.paddingTop = '8px';
+    var btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = expanded ? 'Show less' : 'Show more';
+    btn.addEventListener('click', function(e){ e.preventDefault(); expanded = !expanded; renderKeyVotes(); });
+    ctr.appendChild(btn);
+    root.appendChild(ctr);
+  }
+}
+renderKeyVotes();
+} catch(e){ /* swallow errors */ }
       })();
 
     }).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
