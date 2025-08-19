@@ -136,6 +136,230 @@
     ]).then(function(results){
       var data = results[0] || {}, yamlText = results[1] || '';
       var id = data.identity || {};
+      // ===== Campaign Finance Overview: pie + summary + top committees (toggle like Key Votes) + top employers (toggle) =====
+      (function(){
+        try {
+          var financeNone = document.getElementById('finance-none');
+          var financeContent = document.getElementById('finance-content');
+          var fec = data && data.fec;
+          var hasTotals = !!(fec && fec.totals);
+          var hasTop = !!(fec && fec.top_contributors);
+          var hasData = hasTotals || hasTop;
+
+          if (financeNone) financeNone.style.display = hasData ? 'none' : '';
+          if (!hasData) { if (financeContent) financeContent.innerHTML = ''; return; }
+
+          function num(x){ if (x==null) return 0; var s=(''+x).replace(/[\$,]/g,''); var n=parseFloat(s); return isNaN(n)?0:n; }
+          function pickTotals(obj){
+            if (!obj || typeof obj !== 'object') return null;
+            var keys = Object.keys(obj);
+            var need = ['individual_itemized_contributions','individual_unitemized_contributions','other_political_committee_contributions','political_party_committee_contributions','candidate_contribution','receipts'];
+            var hasOne = need.some(function(k){ return Object.prototype.hasOwnProperty.call(obj,k); });
+            if (hasOne) return obj;
+            var first = (keys.length ? obj[keys[0]] : null);
+            return (first && typeof first === 'object') ? first : null;
+          }
+          function fmtMoney(n){ return '$' + Math.round(n).toLocaleString(); }
+
+          if (financeContent) financeContent.innerHTML = '';
+
+          // ----- PIE CHART -----
+          var totalsObj = hasTotals ? pickTotals(fec.totals) : null;
+          var chartSum = 0;
+          if (totalsObj) {
+            var parts = [
+              { label: 'Small-dollar individual donations', value: num(totalsObj['individual_itemized_contributions']) },
+              { label: 'Large-dollar individual donations', value: num(totalsObj['individual_unitemized_contributions']) },
+              { label: 'Committee donations', value: num(totalsObj['other_political_committee_contributions']) + num(totalsObj['political_party_committee_contributions']) },
+              { label: 'Self-funded donations', value: num(totalsObj['candidate_contribution']) }
+            ];
+            chartSum = parts.reduce(function(a,b){ return a + (b.value||0); }, 0);
+            if (chartSum > 0) {
+              var tip = document.getElementById('finance-tooltip');
+              if (!tip){
+                tip = document.createElement('div');
+                tip.id = 'finance-tooltip';
+                tip.style.position = 'fixed'; tip.style.pointerEvents = 'none'; tip.style.zIndex = '9999';
+                tip.style.background = 'rgba(17,24,39,0.92)'; tip.style.color = '#fff';
+                tip.style.padding = '8px 10px'; tip.style.borderRadius = '8px';
+                tip.style.fontSize = '12px'; tip.style.lineHeight = '1.2';
+                tip.style.transform = 'translate(-50%, -120%)'; tip.style.opacity = '0';
+                tip.style.transition = 'opacity .12s ease';
+                document.body.appendChild(tip);
+              }
+              function showTip(x,y, html){ tip.innerHTML = html; tip.style.left = x+'px'; tip.style.top = y+'px'; tip.style.opacity='1'; }
+              function hideTip(){ tip.style.opacity = '0'; }
+
+              var W=160, H=160, R=58, CX=W/2, CY=H/2;
+              var C = 2*Math.PI*R, COLORS=['#0ea5e9','#f97316','#22c55e','#a855f7'], STROKE=22;
+
+              var svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+              svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.setAttribute('width', W); svg.setAttribute('height', H);
+              svg.style.maxWidth = '170px'; svg.style.display='block';
+
+              var bg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+              bg.setAttribute('cx', CX); bg.setAttribute('cy', CY); bg.setAttribute('r', R);
+              bg.setAttribute('fill','none'); bg.setAttribute('stroke','#e5e7eb'); bg.setAttribute('stroke-width', STROKE);
+              svg.appendChild(bg);
+
+              var offset=0;
+              parts.forEach(function(p, idx){
+                var frac = (p.value||0) / chartSum; if (frac <= 0) return;
+                var seg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+                seg.setAttribute('cx', CX); seg.setAttribute('cy', CY); seg.setAttribute('r', R);
+                seg.setAttribute('fill','none'); seg.setAttribute('stroke', COLORS[idx % COLORS.length]);
+                seg.setAttribute('stroke-width', STROKE);
+                seg.setAttribute('stroke-dasharray', (frac*C) + ' ' + (C - frac*C));
+                seg.setAttribute('stroke-dashoffset', -offset*C);
+                seg.setAttribute('transform','rotate(-90 '+CX+' '+CY+')');
+                seg.addEventListener('mouseenter', function(e){ var percent=Math.round(frac*100); showTip(e.clientX,e.clientY,'<b>'+p.label+'</b><br>'+fmtMoney(p.value)+' ('+percent+'%)'); });
+                seg.addEventListener('mousemove', function(e){ showTip(e.clientX,e.clientY, tip.innerHTML); });
+                seg.addEventListener('mouseleave', hideTip);
+                seg.addEventListener('touchstart', function(e){ var tchg=(e.touches&&e.touches[0])||null; var percent=Math.round(frac*100); if(tchg) showTip(tchg.clientX,tchg.clientY,'<b>'+p.label+'</b><br>'+fmtMoney(p.value)+' ('+percent+'%)'); }, {passive:true});
+                seg.addEventListener('touchend', hideTip);
+                svg.appendChild(seg); offset += frac;
+              });
+
+              var legend = document.createElement('div');
+              legend.style.display='grid'; legend.style.gridTemplateColumns='1fr'; legend.style.gap='6px';
+              legend.style.margin='0'; legend.style.padding='0 8px'; legend.style.textAlign='center';
+              parts.forEach(function(p, idx){
+                var row=document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.justifyContent='center';
+                var sw=document.createElement('span'); sw.style.display='inline-block'; sw.style.width='12px'; sw.style.height='12px'; sw.style.borderRadius='3px'; sw.style.background=COLORS[idx%COLORS.length];
+                var lbl=document.createElement('span'); lbl.textContent=p.label;
+                row.appendChild(sw); row.appendChild(lbl); legend.appendChild(row);
+              });
+
+              var wrap=document.createElement('div'); wrap.style.display='inline-flex'; wrap.style.justifyContent='center'; wrap.style.alignItems='center'; wrap.style.gap='16px'; wrap.style.flexWrap='wrap';
+              wrap.appendChild(svg); wrap.appendChild(legend);
+              var center=document.createElement('div'); center.style.width='100%'; center.style.textAlign='center'; center.appendChild(wrap);
+              financeContent.appendChild(center);
+            }
+          }
+
+          // ----- Summary line -----
+          var id = data.identity || {};
+          var cname = (id && (id.name || id.display_name || id.official_full || id.full || (id.first&&id.last&&(id.first+' '+id.last)) || (id.firstname&&id.lastname&&(id.firstname+' '+id.lastname)))) || (id && id.bioguide) || 'This member';
+          var receiptsVal = num(fec && (fec.receipts || (totalsObj && totalsObj.receipts))); if (!receiptsVal && chartSum) receiptsVal = chartSum;
+          var summary = document.createElement('div'); summary.style.marginTop='8px'; summary.style.fontSize='0.95rem'; summary.style.textAlign='center';
+          summary.textContent = cname + ' has raised ' + fmtMoney(receiptsVal) + ' this cycle thus far.';
+          financeContent.appendChild(summary);
+
+          // ----- Major Committee Donations (with toggle styled like Key Votes) -----
+          var nextTitle = document.createElement('div'); nextTitle.className = 'section-title'; nextTitle.style.marginTop='12px'; nextTitle.textContent='Major Committee Donations';
+          financeContent.appendChild(nextTitle);
+
+          var pacs = (((fec||{}).top_contributors||{}).top_contributors||{}).pacs || [];
+          if (Array.isArray(pacs) && pacs.length){
+            pacs.sort(function(a,b){ return num((b&&b.total)) - num((a&&a.total)); });
+
+            var listWrap = document.createElement('div');
+            listWrap.id = 'committee-list-wrap';
+
+            var expanded = false;
+            function renderPacs(){
+              listWrap.innerHTML = '';
+              var limit = expanded ? Math.min(10, pacs.length) : Math.min(3, pacs.length);
+              var slice = pacs.slice(0, limit);
+              slice.forEach(function(p){
+                var name = (p && (p.name || p.committee_name)) || (p && p.committee_id) || 'Unknown committee';
+                var dollars = fmtMoney(num(p && p.total));
+                var row = document.createElement('div');
+                row.className = 'stack';
+                row.style.borderTop = '1px solid var(--border)';
+                row.style.paddingTop = '10px';
+                row.style.paddingBottom = '10px';
+                row.style.lineHeight = '1.35';
+                var head = document.createElement('div');
+                var strong = document.createElement('strong'); strong.textContent = String(name); head.appendChild(strong);
+                var sep = document.createTextNode(' \u2022 ');
+                head.appendChild(sep);
+                var amt = document.createElement('span'); amt.textContent = dollars; head.appendChild(amt);
+                row.appendChild(head);
+                listWrap.appendChild(row);
+              });
+
+              ctr1.innerHTML = '';
+              if (pacs.length > 3){
+                var btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.textContent = expanded ? 'Show less' : 'Show more';
+                btn.addEventListener('click', function(e){ e.preventDefault(); expanded = !expanded; renderPacs(); });
+                ctr1.appendChild(btn);
+              }
+            }
+
+            var ctr1 = document.createElement('div');
+            ctr1.style.paddingTop = '8px';
+
+            renderPacs();
+            financeContent.appendChild(listWrap);
+            financeContent.appendChild(ctr1);
+          } else {
+            var none = document.createElement('div'); none.className='muted'; none.style.textAlign='left'; none.textContent='No committee donations available.';
+            financeContent.appendChild(none);
+          }
+
+          // ----- Major Employer Donations (with toggle styled like Key Votes) -----
+          var nextTitle2 = document.createElement('div'); nextTitle2.className = 'section-title'; nextTitle2.style.marginTop='12px'; nextTitle2.textContent='Major Employer Donations';
+          financeContent.appendChild(nextTitle2);
+
+          var orgs = (((fec||{}).top_contributors||{}).top_contributors||{}).orgs || [];
+          if (Array.isArray(orgs) && orgs.length){
+            orgs.sort(function(a,b){ return num((b&&b.total)) - num((a&&a.total)); });
+
+            var listWrap2 = document.createElement('div');
+            listWrap2.id = 'employer-list-wrap';
+
+            var expanded2 = false;
+            function renderOrgs(){
+              listWrap2.innerHTML = '';
+              var limit = expanded2 ? Math.min(10, orgs.length) : Math.min(3, orgs.length);
+              var slice = orgs.slice(0, limit);
+              slice.forEach(function(o){
+                var name = (o && (o.employer || o.name)) || 'Unknown employer';
+                var dollars = fmtMoney(num(o && o.total));
+                var row = document.createElement('div');
+                row.className = 'stack';
+                row.style.borderTop = '1px solid var(--border)';
+                row.style.paddingTop = '10px';
+                row.style.paddingBottom = '10px';
+                row.style.lineHeight = '1.35';
+                var head = document.createElement('div');
+                var strong = document.createElement('strong'); strong.textContent = String(name); head.appendChild(strong);
+                var sep = document.createTextNode(' \u2022 ');
+                head.appendChild(sep);
+                var amt = document.createElement('span'); amt.textContent = dollars; head.appendChild(amt);
+                row.appendChild(head);
+                listWrap2.appendChild(row);
+              });
+
+              ctr2.innerHTML = '';
+              if (orgs.length > 3){
+                var btn2 = document.createElement('button');
+                btn2.className = 'btn';
+                btn2.textContent = expanded2 ? 'Show less' : 'Show more';
+                btn2.addEventListener('click', function(e){ e.preventDefault(); expanded2 = !expanded2; renderOrgs(); });
+                ctr2.appendChild(btn2);
+              }
+            }
+
+            var ctr2 = document.createElement('div');
+            ctr2.style.paddingTop = '8px';
+
+            renderOrgs();
+            financeContent.appendChild(listWrap2);
+            financeContent.appendChild(ctr2);
+          } else {
+            var none2 = document.createElement('div'); none2.className='muted'; none2.style.textAlign='left'; none2.textContent='No employer donations available.';
+            financeContent.appendChild(none2);
+          }
+
+        } catch (e) {
+          if (window && window.console) console.warn('Finance render error:', e);
+        }
+      })();
+
 
       var block = findBlockForBioguide(yamlText, bioguide);
       var displayName = extractNameFromBlock(block) || '(Name unavailable)';
