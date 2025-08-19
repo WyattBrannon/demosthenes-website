@@ -5,7 +5,10 @@
   <title>Demosthenes — Member Report</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- build: member.html · v2025-08-16-33 -->
-  <style>
+<style>
+    h1 { font-size:1.9rem; margin:0 0 6px; text-align:center; }
+    .hint { color:var(--muted); margin:.25rem 0 0; text-align:center; }
+
     :root { --fg:#111827; --muted:#6b7280; --card:#ffffff; --border:#e5e7eb; --bg:#f8fafc; --accent:#2563eb; --maxw:720px; --pad:16px; --gap:12px; }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { overflow-x:hidden; }
@@ -51,9 +54,10 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="title">Demosthenes</div>
-      <div class="badge">v2025-08-16-33</div>
-      <div class="subtitle">Data-rich reports on your congresspeople</div>
+      <h1>Demosthenes</h1>
+      
+      
+      <p class="hint">Data-rich reports on your congresspeople</p>
       <noscript><div class="card" style="margin:12px auto; max-width:720px; border-color:#ef4444; color:#991b1b;">
         JavaScript is disabled or blocked by Content Security Policy. This page needs JS to fetch the member JSON.
       </div></noscript>
@@ -72,7 +76,7 @@
           <div class="section-title">Voting Record</div>
           <div id="dials" class="grid three"></div>
           <div class="dial-note">
-            <p>Ideology is scored 0 (most moderate) to 100 (most extreme). A blue dial indicates liberal ideology, while a red dial indicates conservative ideology.</p>
+            <p class="hint">Data-rich reports on your congresspeople</p>
           </div>
           <div class="section-title">Recent Major Votes</div>
         </section>
