@@ -135,6 +135,60 @@
       fetch(yamlURL,{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' for '+yamlURL); return r.text(); })
     ]).then(function(results){
       var data = results[0] || {}, yamlText = results[1] || '';
+      // --- District Map: render small Leaflet map with district polygon over OSM basemap ---
+      try {
+        (function(){
+          var noteEl = document.getElementById('district-map-note');
+          var mapEl  = document.getElementById('district-map');
+          if (!mapEl || typeof L === 'undefined') return;
+
+          function pad2(n){ n=String(n||''); return n.length<2 ? ('0'+n) : n; }
+          var STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09","DE":"10","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17","IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24","MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31","NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38","OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46","TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54","WI":"55","WY":"56","DC":"11","PR":"72"};
+
+          var id = data && data.identity || {};
+          var state = (id.state || '').toUpperCase();
+          var district = (id.district || '').toString().toUpperCase();
+          if (!state) { if (noteEl) noteEl.textContent = 'Map unavailable (missing state)'; return; }
+          if (district === 'AL' || district === 'AT-LARGE' || district === '0' || district === '00') district = '00';
+          if (/^\d+$/.test(district)) district = pad2(district);
+
+          var stfp = STATE_FIPS[state];
+          if (!stfp) { if (noteEl) noteEl.textContent = 'Map unavailable (unknown state)'; return; }
+
+          var useStateOverlay = (!district || district === '00');
+var layerURL, where;
+if (useStateOverlay) {
+  layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/76"; // States
+  where = "STATE='" + stfp + "'";
+} else {
+  layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/50"; // 118th CDs
+  where = "STATE='" + stfp + "' AND CD118='" + district + "'";
+}
+var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*&returnGeometry=true&f=geojson";
+
+          // Initialize map
+          var map = L.map(mapEl, { scrollWheelZoom:false, dragging:true, touchZoom:true });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(map);
+
+          fetch(url, { cache:'force-cache' }).then(function(r){ return r.json(); }).then(function(geo){
+            try{
+              if (!geo || !geo.features || !geo.features.length) {
+                if (noteEl) noteEl.textContent = 'District boundary not found.';
+                return;
+              }
+              var layer = L.geoJSON(geo, {
+                style: { color: '#2563eb', weight: 2, fillOpacity: 0.10 }
+              }).addTo(map);
+              map.fitBounds(layer.getBounds(), { padding:[12,12] });
+              if (noteEl) noteEl.textContent = state + '-' + (district==='00'?'AL':district) + ' (118th CD)';
+            }catch(e){ if (noteEl) noteEl.textContent = 'Map error'; }
+          }).catch(function(){ if (noteEl) noteEl.textContent = 'Map unavailable (network)'; });
+        })();
+      } catch (e) { /* do nothing; map is optional */ }
+    
       var id = data.identity || {};
       // ===== Campaign Finance Overview: pie + summary + top committees (toggle like Key Votes) + top employers (toggle) =====
       (function(){
