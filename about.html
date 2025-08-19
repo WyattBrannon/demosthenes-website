@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demosthenes — About</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- about.html · composed from index.html header + member.html layout/styles -->
+  <style>
+    :root { --fg:#111827; --muted:#6b7280; --card:#ffffff; --border:#e5e7eb; --bg:#f8fafc; --accent:#2563eb; --maxw:720px; --pad:16px; --gap:12px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { overflow-x:hidden; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:0; background:var(--bg); }
+
+    /* Header typography from index.html */
+    h1 { font-size:1.9rem; margin:0 0 6px; text-align:center; }
+    p.hint { color:var(--muted); margin:.25rem 0 0; text-align:center; }
+
+    /* Layout & components adapted from member.html */
+    .wrap{ min-height:100dvh; display:flex; flex-direction:column; }
+    header{ padding:24px var(--pad) 10px; text-align:center; }
+    main{ flex:1; display:flex; justify-content:center; }
+    .container{ width:100%; max-width:var(--maxw); margin:0 auto; padding: 0 var(--pad) 28px; }
+    .stack{ display:flex; flex-direction:column; gap:var(--gap); }
+    .nav{ display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .btn{ display:inline-block; border:1px solid var(--border); background:#fff; border-radius:10px; padding:10px 12px; text-decoration:none; color:#111; font-weight:600; }
+    .muted{ color:var(--muted); }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 1px 0 rgba(0,0,0,.02); }
+    .section-title{ font-weight:700; font-size:1.30rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <!-- Page title & subtitle from index.html -->
+      <h1>Demosthenes</h1>
+      <p class="hint">Data-rich reports on your congresspeople</p>
+    </header>
+
+    <main>
+      <div class="container stack">
+        <!-- Back button and breadcrumb text from member.html -->
+        <nav class="nav" aria-label="Breadcrumb">
+          <a class="btn" href="index.html">← Back</a>
+          <span class="muted">About page</span>
+        </nav>
+
+        <!-- Content cards styled like member.html -->
+        <section class="card">
+          <div class="section-title">About Demosthenes</div>
+          <div class="muted">Coming soon.</div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Contact or Donate</div>
+          <div class="muted">Coming soon.</div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Methodology</div>
+          <div class="muted">Coming soon.</div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
