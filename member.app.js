@@ -189,6 +189,29 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
         })();
       } catch (e) { /* do nothing; map is optional */ }
     
+
+      // --- District contact buttons (Website / Contact) ---
+      (function(){
+        try {
+          var wrap = document.getElementById('district-contact-btns');
+          var wBtn = document.getElementById('btn-website');
+          var cBtn = document.getElementById('btn-contact');
+          var url  = (data && data.contact && data.contact.url) ? String(data.contact.url) : "";
+          var cf   = (data && data.contact && data.contact.contact_form) ? String(data.contact.contact_form) : "";
+          var shown = false;
+
+          if (wBtn) {
+            if (/^https?:\/\//i.test(url)) { wBtn.href = url; wBtn.style.display=''; shown = true; }
+            else { wBtn.style.display='none'; }
+          }
+          if (cBtn) {
+            if (/^https?:\/\//i.test(cf)) { cBtn.href = cf; cBtn.style.display=''; shown = true; }
+            else { cBtn.style.display='none'; }
+          }
+          if (wrap) wrap.style.display = shown ? '' : 'none';
+        } catch (e) { /* non-fatal */ }
+      })();
+
       var id = data.identity || {};
       // ===== Campaign Finance Overview: pie + summary + top committees (toggle like Key Votes) + top employers (toggle) =====
       (function(){
