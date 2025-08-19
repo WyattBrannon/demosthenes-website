@@ -151,13 +151,16 @@ function extractDistrictFromCensus(j) {
     <header>
       <h1>Demosthenes</h1>
       <p class="hint">Data-rich reports on your congresspeople</p>
+  <div class="row" style="justify-content:center; margin-top:8px">
+    <a class="btn" href="about.html">About</a>
+  </div>
     </header>
 
     <section class="card">
-      <div class="row">
-        <input id="addr" type="text" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC" />
+      <form id="searchForm" class="row">
+        <input id="addr" type="text" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC" enterkeyhint="go">
         <button class="primary" id="go">Find my reps</button>
-</div>
+</form>
       <div class="settings" style="margin-top:8px;">
         
         <div class="row" style="margin-top:6px">
@@ -209,7 +212,26 @@ function extractDistrictFromCensus(j) {
     const YAML_URL = `${BASE}/legislators-current.yaml`;
 
     const addrEl = document.getElementById("addr");
-    const goBtn = document.getElementById("go");
+    
+    
+    // Submit form on mobile "Go" / Enter
+    const searchForm = document.getElementById('searchForm');
+    if (searchForm) {
+      searchForm.addEventListener('submit', function(e){
+        e.preventDefault();
+        const goBtn = document.getElementById('go');
+        if (goBtn) goBtn.click();
+      });
+    }
+// Trigger search on Enter in the address field
+    addrEl.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var goBtn = document.getElementById('go');
+        if (goBtn) goBtn.click();
+      }
+    });
+const goBtn = document.getElementById("go");
     const sampleBtn = document.getElementById("useSample");
     const res = document.getElementById("results");
     const msg = document.getElementById("msg");
