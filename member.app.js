@@ -143,7 +143,11 @@
       header.innerHTML='';
       var party=id.party||'';
 
-      var nameLine=document.createElement('div'); nameLine.className='name-line';
+      
+      // Party color for dials
+      var pLetter = partyLetter(party);
+      var colorParty = (pLetter==='R') ? '#dc2626' : '#2563eb';
+var nameLine=document.createElement('div'); nameLine.className='name-line';
       var nameEl=document.createElement('span'); nameEl.className='name'; nameEl.textContent=displayName; nameEl.title=displayName;
       var pill=document.createElement('span'); pill.className='pill '+partyLetter(party); pill.textContent=partyLetter(party);
       nameLine.appendChild(nameEl); nameLine.appendChild(pill);
@@ -163,6 +167,7 @@
 
       var commWrap=document.createElement('div'); commWrap.className='stack';
       var commTitle=document.createElement('div'); commTitle.className='section-title'; commTitle.textContent='Committees';
+      commTitle.style.fontSize = '1.10rem';
       var commList=document.createElement('ul'); commList.className='list';
       var committees=Array.isArray(id.committees)?id.committees:[];
       committees=committees.filter(function(c){return !isSubcommittee(c);});
@@ -192,27 +197,46 @@
           subP.style.fontSize = '0.9rem';
           subP.style.textAlign = 'center';
           var side = (dirParty === 'left' ? 'left' : (dirParty === 'right' ? 'right' : 'center'));
-          subP.textContent = (side === 'center') ? ('At the center of '+pNoun) : ('To the ' + side + ' of ' + pctParty + '% of ' + pNoun);
+          
+            // Adjust text for <50%: flip side and use complement
+            if (typeof pctParty === 'number') {
+              var adjSide = side;
+              var adjPct  = pctParty;
+              if (pctParty < 50 && side !== 'center') {
+                adjSide = (side === 'left') ? 'right' : 'left';
+                adjPct = 100 - pctParty;
+              }
+              subP.textContent = (side === 'center')
+                ? ('At the center of ' + pNoun)
+                : ('To the ' + adjSide + ' of ' + adjPct + '% of ' + pNoun);
+            } else {
+              subP.textContent = (side === 'center')
+                ? ('At the center of ' + pNoun)
+                : ('To the ' + side + ' of ' + pctParty + '% of ' + pNoun);
+            }
           firstDial.appendChild(subP);
         }
       })();;
 
       var pu=(typeof al.party_unity_pct==='number')?(al.party_unity_pct*100):NaN;
       var puDisplay=(isNaN(pu)?'—':String(Math.round(pu))+'%');
-      renderDial(dials, pu, puDisplay, 'Party Unity', '100 − (% maverick votes)', '#2563eb');
+      renderDial(dials, pu, puDisplay, 'Party Loyalty', '100 − (% maverick votes)', colorParty);
       (function(){
         var dialsList = dials.querySelectorAll('.dial');
         var puDial = dialsList && dialsList[1];
         var pctPUraw = (typeof al.party_unity_percentile_party === 'number') ? Math.round(al.party_unity_percentile_party) : null;
-        var pctPU = (pctPUraw == null ? null : Math.max(0, Math.min(100, 100 - pctPUraw)));
         var pLetter = partyLetter(id.party);
         var pNoun = partyNoun(pLetter);
-        if (puDial && pctPU != null) {
+        if (puDial && pctPUraw != null) {
           var sub = document.createElement('div');
           sub.className = 'muted';
           sub.style.fontSize = '0.9rem';
           sub.style.textAlign = 'center';
-          sub.textContent = 'More maverick than ' + pctPU + '% of ' + pNoun;
+          if (pctPUraw > 50) {
+            sub.textContent = 'More loyal than ' + pctPUraw + '% of ' + pNoun;
+          } else {
+            sub.textContent = 'More maverick than ' + (100 - pctPUraw) + '% of ' + pNoun;
+          }
           puDial.appendChild(sub);
         }
       })();
@@ -220,7 +244,7 @@
       var total=Number(al.total_votes||0); var missed=Number(al.missed_votes||0); var denom=total+missed;
       var reliability=denom?(100-(missed/denom)*100):NaN;
       var relDisplay=(isNaN(reliability)?'—':String(Math.round(reliability))+'%');
-      renderDial(dials, reliability, relDisplay, 'Vote Attendance', '100 − (missed / (total + missed))', '#2563eb');
+      renderDial(dials, reliability, relDisplay, 'Vote Attendance', '100 − (missed / (total + missed))', colorParty);
       (function(){
         var dialsList = dials.querySelectorAll('.dial');
         var relDial = dialsList && dialsList[2];
@@ -232,7 +256,16 @@
           sub.className = 'muted';
           sub.style.fontSize = '0.9rem';
           sub.style.textAlign = 'center';
-          sub.textContent = 'More reliable than ' + pctRel + '% of ' + pNoun;
+          
+            if (typeof pctRel === 'number') {
+              if (pctRel < 50) {
+                sub.textContent = 'Less reliable than ' + (100 - pctRel) + '% of ' + pNoun;
+              } else {
+                sub.textContent = 'More reliable than ' + pctRel + '% of ' + pNoun;
+              }
+            } else {
+              sub.textContent = '';
+            }
           relDial.appendChild(sub);
         }
       })();
