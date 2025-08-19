@@ -190,6 +190,89 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
       } catch (e) { /* do nothing; map is optional */ }
     
 
+      // --- Office list (first three, with Show more/less toggle) ---
+      (function(){
+        try {
+          var list = document.getElementById('office-list');
+          var none = document.getElementById('office-list-none');
+          if (!list) return;
+          var officesAll = (data && Array.isArray(data.offices)) ? data.offices.slice() : [];
+          var expandedOffices = false;
+
+          // Create / get toggle container
+          var ctr = document.getElementById('office-list-ctr');
+          if (!ctr) {
+            ctr = document.createElement('div');
+            ctr.id = 'office-list-ctr';
+            ctr.style.paddingTop = '8px';
+            if (list.parentNode) list.parentNode.insertBefore(ctr, list.nextSibling);
+          }
+          var btn = document.getElementById('office-list-toggle');
+          if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'office-list-toggle';
+            btn.className = 'btn';
+            ctr.appendChild(btn);
+          }
+
+          function renderOffices(){
+            list.innerHTML = '';
+            if (!officesAll.length) {
+              if (none) { none.style.display = ''; }
+              list.style.display = 'none';
+              ctr.style.display = 'none';
+              return;
+            }
+            var slice = expandedOffices ? officesAll : officesAll.slice(0, 3);
+            slice.forEach(function(o){
+              var city  = (o.city  || '').toString();
+              var state = (o.state || '').toString();
+              var zip   = (o.zip   || o.zip5 || '').toString();
+              var addr  = (o.address || '').toString();
+              var suite = (o.suite   || '').toString();
+              var phone = (o.phone   || '').toString();
+
+              var item  = document.createElement('div');
+              item.className = 'office-entry';
+              item.style.padding = '8px 0';
+              item.style.borderTop = '1px solid var(--border)';
+
+              var top = document.createElement('div');
+              var cityState = [city, state].filter(Boolean).join(', ');
+              top.innerHTML = (cityState ? ('<strong>' + cityState + '</strong>') : '') + (zip ? (' ' + zip) : '');
+              item.appendChild(top);
+
+              var line2 = document.createElement('div');
+              var line2txt = addr + (addr && suite ? ', ' : '') + suite;
+              line2.textContent = line2txt;
+              item.appendChild(line2);
+
+              if (phone) {
+                var line3 = document.createElement('div');
+                line3.textContent = phone;
+                item.appendChild(line3);
+              }
+
+              list.appendChild(item);
+            });
+            list.style.display = '';
+
+            if (officesAll.length > 3) {
+              ctr.style.display = '';
+              btn.textContent = expandedOffices ? 'Show less' : 'Show more';
+            } else {
+              ctr.style.display = 'none';
+            }
+
+            if (none) { none.style.display = 'none'; }
+          }
+
+          btn.onclick = function(e){ e.preventDefault(); expandedOffices = !expandedOffices; renderOffices(); };
+          renderOffices();
+        } catch (e) { /* non-fatal */ }
+      })();
+
+
       // --- District contact buttons (Website / Contact) ---
       (function(){
         try {
@@ -211,6 +294,7 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
           if (wrap) wrap.style.display = shown ? '' : 'none';
         } catch (e) { /* non-fatal */ }
       })();
+
 
       var id = data.identity || {};
       // ===== Campaign Finance Overview: pie + summary + top committees (toggle like Key Votes) + top employers (toggle) =====
