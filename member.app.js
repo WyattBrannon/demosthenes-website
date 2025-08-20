@@ -653,9 +653,106 @@ var nameLine=document.createElement('div'); nameLine.className='name-line';
             }
           relDial.appendChild(sub);
         }
-      })();
+      
+            })();
+      // --- Signature Work Dials (Total Bills Passed & Bipartisan Bills Sponsored) ---
+      
+        try {
+          // Find Signature Work card and container
+          var sigCard = null;
+          var cards = document.querySelectorAll('.card');
+          for (var i=0;i<cards.length;i++){
+            var h = cards[i].querySelector('.section-title');
+            if (h && (function(t){ t=(t||'').trim(); return t==='Signature Work' || t==='Signature Works'; })(h.textContent)) { sigCard = cards[i]; break; }
+          }
+          if (!sigCard) return;
+          var container = document.getElementById('sigwork-dials');
+          if (!container) {
+            container = document.createElement('div');
+            container.id = 'sigwork-dials';
+            container.className = 'grid two';
+            var headerEl = sigCard.querySelector('.section-title');
+            if (headerEl) headerEl.insertAdjacentElement('afterend', container);
+            else sigCard.appendChild(container);
+          }
+          container.innerHTML = '';
 
-      /* KEY VOTES (existing) — left as-is */
+                    var ws = (data && data.work_statistics) || {};
+          var hasTotal = (ws && Object.prototype.hasOwnProperty.call(ws, 'total_hr_sr'));
+          container.innerHTML = '';
+
+          if (!hasTotal) {
+            var no = document.createElement('div');
+            no.className = 'muted';
+            no.style.textAlign = 'left';
+            no.textContent = 'No information available.';
+            container.appendChild(no);
+          } else {
+            function toNum(x){ var n = Number(x); return isNaN(n) ? 0 : n; }
+            var total = toNum(ws.total_hr_sr);
+            var passed = toNum(ws.total_hr_sr_became_public_law);
+            var bipart = toNum(ws.total_hr_sr_bipartisan);
+
+            var pctPassed = total > 0 ? (passed / total) * 100 : NaN;
+            var pctBipart = total > 0 ? (bipart / total) * 100 : NaN;
+
+            // Keep dial style consistent with Voting Record (party color)
+            renderDial(container, isNaN(pctPassed) ? NaN : Math.max(0, Math.min(100, Math.round(pctPassed))), String(passed), 'Total Bills Passed', 'Became Public Law / Total HR+SR', colorParty);
+            renderDial(container, isNaN(pctBipart) ? NaN : Math.max(0, Math.min(100, Math.round(pctBipart))), String(bipart), 'Bipartisan Bills Sponsored', 'Bipartisan HR+SR / Total HR+SR', colorParty);
+
+            // Subtexts under dial labels (only when there are some bills)
+            if (total > 0) {
+              var dials = container.querySelectorAll('.dial');
+              if (dials && dials.length >= 2) {
+                var dialPassed = dials[dials.length - 2];
+                var dialBipart = dials[dials.length - 1];
+                var sub1 = document.createElement('div');
+                sub1.className = 'muted';
+                sub1.style.fontSize = '0.9rem';
+                sub1.style.textAlign = 'center';
+                sub1.textContent = String(Math.round(pctPassed)) + '% of bills sponsored passed';
+                dialPassed.appendChild(sub1);
+                // Extra subtext: effectiveness percentile (party-relative)
+                var partyWord = (typeof partyNoun === 'function' ? partyNoun(pLetter) : (pLetter==='R' ? 'Republicans' : 'Democrats'));
+                var pEff = ws && typeof ws.passed_rate_percentile_party === 'number' ? ws.passed_rate_percentile_party : null;
+                if (pEff != null) {
+                  var sub1b = document.createElement('div');
+                  sub1b.className = 'muted';
+                  sub1b.style.fontSize = '0.9rem';
+                  sub1b.style.textAlign = 'center';
+                  sub1b.textContent = (pEff < 50
+  ? ('Less effective than ' + String(Math.round(100-pEff)) + '% of ' + partyWord)
+  : ('More effective than ' + String(Math.round(pEff)) + '% of ' + partyWord)
+);
+                  dialPassed.appendChild(sub1b);
+                }
+
+                var sub2 = document.createElement('div');
+                sub2.className = 'muted';
+                sub2.style.fontSize = '0.9rem';
+                sub2.style.textAlign = 'center';
+                sub2.textContent = String(Math.round(pctBipart)) + '% of bills sponsored were bipartisan';
+                dialBipart.appendChild(sub2);
+                // Extra subtext: bipartisanship percentile (party-relative)
+                var pBip = ws && typeof ws.bipartisan_rate_percentile_party === 'number' ? ws.bipartisan_rate_percentile_party : null;
+                if (pBip != null) {
+                  var sub2b = document.createElement('div');
+                  sub2b.className = 'muted';
+                  sub2b.style.fontSize = '0.9rem';
+                  sub2b.style.textAlign = 'center';
+                  sub2b.textContent = (pBip < 50
+  ? ('Less bipartisan than ' + String(Math.round(100-pBip)) + '% of ' + partyWord)
+  : ('More bipartisan than ' + String(Math.round(pBip)) + '% of ' + partyWord)
+);
+                  dialBipart.appendChild(sub2b);
+                }
+              }
+            }
+          }
+        } catch (e) { /* non-fatal */ }
+      ;
+
+/* KEY VOTES (existing) — left as-is */
       (function(){
         try {
           var cards = document.querySelectorAll('.card');
