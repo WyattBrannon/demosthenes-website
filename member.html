@@ -44,6 +44,7 @@
     .list{ margin:0; padding-left:1.1rem; }
     .section-title{ font-weight:700; font-size:1.30rem; }
     .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
+    .grid.two{ grid-template-columns: 1fr 1fr; }
     .grid.three{ grid-template-columns: 1fr 1fr 1fr; } /* side-by-side on mobile */
     .dial{ display:flex; flex-direction:column; align-items:center; gap:8px; }
     .dial svg{ display:block; width:120px; height:120px; }
@@ -99,7 +100,7 @@
 
         <section class="card">
           <div class="section-title">Signature Work</div>
-          <div class="muted">Coming soon.</div>
+          <div id="sigwork-dials" class="grid two"></div>
         </section>
 
         <section class="card" id="finance">
