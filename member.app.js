@@ -721,10 +721,10 @@ var nameLine=document.createElement('div'); nameLine.className='name-line';
                   sub1b.style.fontSize = '0.9rem';
                   sub1b.style.textAlign = 'center';
                   sub1b.textContent = (pEff < 50
-  ? ('Less effective than ' + String(Math.round(100-pEff)) + '% of ' + partyWord)
+  ? ('Less effective than ' + String(Math.round(100 - pEff)) + '% of ' + partyWord)
   : ('More effective than ' + String(Math.round(pEff)) + '% of ' + partyWord)
 );
-                  dialPassed.appendChild(sub1b);
+dialPassed.appendChild(sub1b);
                 }
 
                 var sub2 = document.createElement('div');
@@ -741,10 +741,10 @@ var nameLine=document.createElement('div'); nameLine.className='name-line';
                   sub2b.style.fontSize = '0.9rem';
                   sub2b.style.textAlign = 'center';
                   sub2b.textContent = (pBip < 50
-  ? ('Less bipartisan than ' + String(Math.round(100-pBip)) + '% of ' + partyWord)
+  ? ('Less bipartisan than ' + String(Math.round(100 - pBip)) + '% of ' + partyWord)
   : ('More bipartisan than ' + String(Math.round(pBip)) + '% of ' + partyWord)
 );
-                  dialBipart.appendChild(sub2b);
+dialBipart.appendChild(sub2b);
                 }
               }
             }
@@ -752,6 +752,155 @@ var nameLine=document.createElement('div'); nameLine.className='name-line';
         } catch (e) { /* non-fatal */ }
       ;
 
+
+      
+      // --- Sponsored Bills list (first three, newest first) ---
+      (function(){
+        try {
+          var billsWrap = document.getElementById('sponsored-bills');
+          if (!billsWrap) {
+            var sigCard = null;
+            var cards = document.querySelectorAll('.card');
+            for (var i=0;i<cards.length;i++){
+              var h = cards[i].querySelector('.section-title');
+              if (h && (h.textContent||'').trim().startsWith('Signature Work')){ sigCard = cards[i]; break; }
+            }
+            if (sigCard) {
+              var sbTitle = document.createElement('div');
+              sbTitle.className = 'section-title';
+              sbTitle.textContent = 'Sponsored Bills';
+              sigCard.appendChild(sbTitle);
+
+              billsWrap = document.createElement('div');
+              billsWrap.id = 'sponsored-bills';
+              billsWrap.className = 'stack';
+              sigCard.appendChild(billsWrap);
+            }
+          }
+          if (!billsWrap) return;
+
+          // Prepare data once
+          var billsAll = (function(){
+            var arr = Array.isArray(data && data.bills) ? data.bills.slice() : [];
+            arr.sort(function(a,b){
+              var ad = new Date((a && a.introducedDate) || 0).getTime();
+              var bd = new Date((b && b.introducedDate) || 0).getTime();
+              return bd - ad; // newest first
+            });
+            return arr;
+          })();
+
+          var expandedSB = false;
+
+          function fmtType(bt){
+            bt = String(bt||'').toLowerCase();
+            if (bt==='hr') return 'H.R.';
+            if (bt==='sr') return 'S.R.';
+            return bt.toUpperCase();
+          }
+
+          function renderSponsoredBills(){
+            billsWrap.innerHTML = '';
+
+            var bills = expandedSB ? billsAll.slice(0, Math.min(10, billsAll.length)) : billsAll.slice(0, Math.min(3, billsAll.length));
+
+            bills.forEach(function(b){
+              var type = fmtType(b && b.billType);
+              var num = String(b && b.number || '');
+              var date = String(b && b.introducedDate || '');
+              var title = String(b && b.title || '');
+              var latest = b && b.latestAction && b.latestAction.text ? String(b.latestAction.text) : '';
+              var policyArea = String(b && b.policy_area || '');
+
+              var row = document.createElement('div');
+              row.className = 'stack';
+              row.style.borderTop = '1px solid var(--border)';
+              row.style.paddingTop = '8px';
+
+              // First line: TYPE NUM • DATE (+ pills)
+              var head = document.createElement('div');
+              var strong = document.createElement('strong'); strong.textContent = String(type + (num ? (' ' + num) : '')); head.appendChild(strong);
+              if (date) {
+                var sep = document.createTextNode(' • ');
+                head.appendChild(sep);
+                var span = document.createElement('span'); span.className = 'muted';
+                try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
+                head.appendChild(span);
+              }
+              // Purple 'Bipartisan' pill (if applicable)
+              if (b && b.bipartisan === true) {
+                head.appendChild(document.createTextNode(' '));
+                var bp = document.createElement('span');
+                bp.className = 'pill P';
+                bp.textContent = 'Bipartisan';
+                head.appendChild(bp);
+              }
+              // Neutral 'Became Law' pill after Bipartisan (if latest indicates Became Public Law)
+              if (latest && /became public law/i.test(latest)) {
+                head.appendChild(document.createTextNode(' '));
+                var bl = document.createElement('span');
+                bl.className = 'pill N';
+                bl.textContent = 'Became Law';
+                head.appendChild(bl);
+              }
+
+              row.appendChild(head);
+
+              // Second line: bill title
+              if (title) {
+                var titleLine = document.createElement('div');
+                titleLine.textContent = title;
+                row.appendChild(titleLine);
+              }
+
+              // Third line: Latest action (muted)
+              if (latest) {
+                var meta = document.createElement('div');
+                meta.className = 'muted';
+                meta.textContent = 'Latest action: ' + latest;
+                row.appendChild(meta);
+              }
+
+              // Fourth line: Policy Area in neutral pill
+              if (policyArea) {
+                var subj = document.createElement('div');
+                var pill = document.createElement('span');
+                pill.className = 'pill N';
+                pill.textContent = policyArea;
+                subj.appendChild(pill);
+                row.appendChild(subj);
+              }
+
+              billsWrap.appendChild(row);
+            });
+
+            // Toggle button (like other lists)
+            var existingCtr = document.getElementById('sponsored-bills-ctr');
+            if (existingCtr) existingCtr.remove();
+            if (billsAll.length > 3) {
+              var ctr = document.createElement('div');
+              ctr.id = 'sponsored-bills-ctr';
+              ctr.style.paddingTop = '8px';
+              var btn = document.createElement('button');
+              btn.className = 'btn';
+              btn.textContent = expandedSB ? 'Show less' : 'Show more';
+              btn.addEventListener('click', function(e){ e.preventDefault(); expandedSB = !expandedSB; renderSponsoredBills(); });
+              ctr.appendChild(btn);
+              // Insert after the list
+              if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctr, billsWrap.nextSibling);
+            }
+
+            if (billsAll.length === 0) {
+              var empty = document.createElement('div');
+              empty.className = 'muted';
+              empty.textContent = 'No sponsored bills available.';
+              billsWrap.appendChild(empty);
+            }
+          }
+
+          renderSponsoredBills();
+        } catch(e){ /* non-fatal */ }
+      })();
 /* KEY VOTES (existing) — left as-is */
       (function(){
         try {
