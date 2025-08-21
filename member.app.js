@@ -183,7 +183,15 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
                 style: { color: '#2563eb', weight: 2, fillOpacity: 0.10 }
               }).addTo(map);
               map.fitBounds(layer.getBounds(), { padding:[12,12] });
-              if (noteEl) noteEl.textContent = state + '-' + (district==='00'?'AL':district) + ' (118th CD)';
+              if (noteEl) {
+              var chamber = (id && id.chamber ? String(id.chamber).toLowerCase() : '');
+              var atLarge = (!district || district==='00');
+              if (chamber === 'senate' || atLarge) {
+                noteEl.textContent = state + ' (118th CD)';
+              } else {
+                noteEl.textContent = state + '-' + district + ' (118th CD)';
+              }
+            }
             }catch(e){ if (noteEl) noteEl.textContent = 'Map error'; }
           }).catch(function(){ if (noteEl) noteEl.textContent = 'Map unavailable (network)'; });
         })();
@@ -292,6 +300,13 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
             else { cBtn.style.display='none'; }
           }
           if (wrap) wrap.style.display = shown ? '' : 'none';
+          // Move the district map note below the buttons
+          try {
+            var note = document.getElementById('district-map-note');
+            if (wrap && note && note.parentNode) {
+              wrap.parentNode.insertBefore(note, wrap.nextSibling);
+            }
+          } catch(e) { /* ignore */ }
         } catch (e) { /* non-fatal */ }
       })();
 
@@ -515,6 +530,19 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
             var none2 = document.createElement('div'); none2.className='muted'; none2.style.textAlign='left'; none2.textContent='No employer donations available.';
             financeContent.appendChild(none2);
           }
+
+          // Append data source footer to Campaign Finance card (once)
+          try {
+            var financeCard = document.getElementById('finance');
+            if (financeCard && !financeCard.querySelector('.data-note-finance')) {
+              var f3 = document.createElement('div');
+              f3.className = 'muted data-note-finance';
+              f3.style.marginTop = '10px';
+              f3.style.textAlign = 'left';
+              f3.textContent = 'Data from FEC.gov • Updated Quarterly';
+              financeCard.appendChild(f3);
+            }
+          } catch(e) { /* ignore */ }
 
         } catch (e) {
           if (window && window.console) console.warn('Finance render error:', e);
@@ -754,153 +782,334 @@ dialBipart.appendChild(sub2b);
 
 
       
-      // --- Sponsored Bills list (first three, newest first) ---
-      (function(){
-        try {
-          var billsWrap = document.getElementById('sponsored-bills');
-          if (!billsWrap) {
-            var sigCard = null;
-            var cards = document.querySelectorAll('.card');
-            for (var i=0;i<cards.length;i++){
-              var h = cards[i].querySelector('.section-title');
-              if (h && (h.textContent||'').trim().startsWith('Signature Work')){ sigCard = cards[i]; break; }
-            }
-            if (sigCard) {
-              var sbTitle = document.createElement('div');
-              sbTitle.className = 'section-title';
-              sbTitle.textContent = 'Sponsored Bills';
-              sigCard.appendChild(sbTitle);
+      // --- Sponsored Bills list (with Policy Area filter + Show more/less) ---
+(function(){
+  try {
+    // Find (or create) title + list container
+    var billsWrap = document.getElementById('sponsored-bills');
+    var sbTitleEl = null;
 
-              billsWrap = document.createElement('div');
-              billsWrap.id = 'sponsored-bills';
-              billsWrap.className = 'stack';
-              sigCard.appendChild(billsWrap);
-            }
+    if (!billsWrap) {
+      var sigCard = null;
+      var cards = document.querySelectorAll('.card');
+      for (var i=0;i<cards.length;i++){
+        var h = cards[i].querySelector('.section-title');
+        if (h && (h.textContent||'').trim().startsWith('Signature Work')){ sigCard = cards[i]; break; }
+      }
+      if (sigCard) {
+        sbTitleEl = document.createElement('div');
+        sbTitleEl.className = 'section-title';
+        sbTitleEl.textContent = 'Sponsored Bills';
+        sigCard.appendChild(sbTitleEl);
+
+        billsWrap = document.createElement('div');
+        billsWrap.id = 'sponsored-bills';
+        billsWrap.className = 'stack';
+        sigCard.appendChild(billsWrap);
+      }
+    } else {
+      // Page already has the header markup; grab the title on the line above the list
+      var maybeTitle = billsWrap.previousElementSibling;
+      if (maybeTitle && maybeTitle.classList && maybeTitle.classList.contains('section-title')) {
+        sbTitleEl = maybeTitle;
+      }
+    }
+    if (!billsWrap) return;
+
+    // Prepare data (newest first)
+    var billsAll = (function(){
+      var arrSource = (typeof window !== 'undefined' && window.__memberData && window.__memberData.bills) ||
+                      (typeof data !== 'undefined' && data && data.bills) || [];
+      var arr = Array.isArray(arrSource) ? arrSource.slice() : [];
+      arr.sort(function(a,b){
+        var ad = new Date((a && a.introducedDate) || 0).getTime();
+        var bd = new Date((b && b.introducedDate) || 0).getTime();
+        return bd - ad; // newest first
+      });
+      return arr;
+    })();
+
+    // Unique policy areas (skip blanks), sorted
+    var policyAreas = Array.from(
+      new Set(
+        billsAll
+          .map(function(b){ return String(b && b.policy_area || '').trim(); })
+          .filter(function(s){ return !!s; })
+      )
+    ).sort();
+
+    // State
+    var expandedSB = false;
+    var activePolicy = null; // null = no filter (show all)
+
+    // --- Header: put a right-aligned Filter button on the same line as "Sponsored Bills"
+    if (sbTitleEl) {
+      sbTitleEl.style.display = 'flex';
+      sbTitleEl.style.alignItems = 'center';
+      sbTitleEl.style.gap = '8px';
+
+      var filterBtn = document.createElement('button');
+      filterBtn.className = 'btn';
+      filterBtn.textContent = 'Filter';
+      filterBtn.style.marginLeft = 'auto'; // right-align
+      filterBtn.setAttribute('aria-haspopup', 'true');
+      filterBtn.setAttribute('aria-expanded', 'false');
+      sbTitleEl.appendChild(filterBtn);
+
+      // Popover (simple, self-styled)
+      var pop = document.createElement('div');
+      pop.style.position = 'fixed';
+      pop.style.zIndex = '10000';
+      pop.style.background = '#fff';
+      pop.style.border = '1px solid var(--border)';
+      pop.style.borderRadius = '12px';
+      pop.style.boxShadow = '0 8px 20px rgba(0,0,0,.08)';
+      pop.style.padding = '10px';
+      pop.style.minWidth = '260px';
+      pop.style.maxWidth = 'min(96vw, 420px)';
+      pop.style.display = 'none';
+
+      // Build content inside popover
+      var title = document.createElement('div');
+      title.style.fontWeight = '700';
+      title.style.marginBottom = '6px';
+      title.textContent = 'Filter by policy area';
+      pop.appendChild(title);
+
+      if (!policyAreas.length) {
+        var none = document.createElement('div');
+        none.className = 'muted';
+        none.textContent = 'No policy areas in this list.';
+        pop.appendChild(none);
+        filterBtn.disabled = true;
+      } else {
+        // Search box (client-side)
+        var search = document.createElement('input');
+        search.type = 'search';
+        search.placeholder = 'Search areas…';
+        search.style.width = '100%';
+        search.style.padding = '8px 10px';
+        search.style.border = '1px solid var(--border)';
+        search.style.borderRadius = '8px';
+        search.style.marginBottom = '8px';
+        pop.appendChild(search);
+
+        // Chip grid
+        var chipWrap = document.createElement('div');
+        chipWrap.style.display = 'flex';
+        chipWrap.style.flexWrap = 'wrap';
+        chipWrap.style.gap = '8px';
+        chipWrap.style.maxHeight = '220px';
+        chipWrap.style.overflow = 'auto';
+        pop.appendChild(chipWrap);
+
+        function makeChip(label, isActive){
+          var c = document.createElement('button');
+          c.type = 'button';
+          c.className = 'pill N';
+          c.style.cursor = 'pointer';
+          c.style.borderWidth = '1px';
+          c.style.userSelect = 'none';
+          c.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          c.textContent = (isActive ? '✓ ' : '') + label;
+          if (isActive) {
+            c.style.background = '#e5e7eb';
+            c.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,.08)';
+            c.style.fontWeight = '700';
+            c.style.outline = '2px solid rgba(0,0,0,.12)';
           }
-          if (!billsWrap) return;
+          c.addEventListener('click', function(e){
+            e.preventDefault();
+            if (label === '(All)') {
+              activePolicy = null;
+            } else {
+              activePolicy = (activePolicy === label) ? null : label; // toggle
+            }
+            // Keep the popover open and update emphasis in-place
+            renderChips(search.value);
+            renderSponsoredBills(); // re-render with new filter
+          });
+          return c;
+        }
 
-          // Prepare data once
-          var billsAll = (function(){
-            var arr = Array.isArray(data && data.bills) ? data.bills.slice() : [];
-            arr.sort(function(a,b){
-              var ad = new Date((a && a.introducedDate) || 0).getTime();
-              var bd = new Date((b && b.introducedDate) || 0).getTime();
-              return bd - ad; // newest first
+        function renderChips(q){
+          chipWrap.innerHTML = '';
+          var qry = (q||'').toLowerCase().trim();
+          // Always include an (All) chip at the front
+          chipWrap.appendChild(makeChip('(All)', activePolicy === null));
+          policyAreas
+            .filter(function(a){ return !qry || a.toLowerCase().indexOf(qry) !== -1; })
+            .forEach(function(a){
+              chipWrap.appendChild(makeChip(a, activePolicy === a));
             });
-            return arr;
-          })();
+        }
+        renderChips('');
 
-          var expandedSB = false;
+        search.addEventListener('input', function(){
+          renderChips(search.value);
+        });
+      }
 
-          function fmtType(bt){
-            bt = String(bt||'').toLowerCase();
-            if (bt==='hr') return 'H.R.';
-            if (bt==='sr') return 'S.R.';
-            return bt.toUpperCase();
+      document.body.appendChild(pop);
+
+      function openPop(){
+        if (filterBtn.disabled) return;
+        var r = filterBtn.getBoundingClientRect();
+        var top = (r.bottom + 8);
+        var left = Math.min(r.left, window.innerWidth - pop.offsetWidth - 12);
+        pop.style.display = 'block';
+        pop.style.top = top + 'px';
+        pop.style.left = left + 'px';
+        filterBtn.setAttribute('aria-expanded', 'true');
+        var inp = pop.querySelector('input[type="search"]');
+        if (inp) { setTimeout(function(){ try{ inp.focus(); }catch(e){} }, 0); }
+        setTimeout(function(){
+          window.addEventListener('mousedown', onDocClick, { once:true });
+          window.addEventListener('keydown', onEsc, { once:true });
+        },0);
+      }
+      function closePop(){
+        pop.style.display = 'none';
+        filterBtn.setAttribute('aria-expanded', 'false');
+      }
+      function onDocClick(e){
+        if (pop.contains(e.target) || e.target === filterBtn) {
+          if (!pop.contains(e.target)) closePop();
+          else {
+            window.addEventListener('mousedown', onDocClick, { once:true });
           }
+          return;
+        }
+        closePop();
+      }
+      function onEsc(e){ if (e.key === 'Escape') closePop(); }
 
-          function renderSponsoredBills(){
-            billsWrap.innerHTML = '';
+      filterBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        if (pop.style.display === 'block') closePop(); else openPop();
+      });
+    }
 
-            var bills = expandedSB ? billsAll.slice(0, Math.min(10, billsAll.length)) : billsAll.slice(0, Math.min(3, billsAll.length));
+    function fmtType(bt){
+      bt = String(bt||'').toLowerCase();
+      if (bt==='hr') return 'H.R.';
+      if (bt==='sr') return 'S.R.';
+      return bt.toUpperCase();
+    }
 
-            bills.forEach(function(b){
-              var type = fmtType(b && b.billType);
-              var num = String(b && b.number || '');
-              var date = String(b && b.introducedDate || '');
-              var title = String(b && b.title || '');
-              var latest = b && b.latestAction && b.latestAction.text ? String(b.latestAction.text) : '';
-              var policyArea = String(b && b.policy_area || '');
+    function renderSponsoredBills(){
+      billsWrap.innerHTML = '';
 
-              var row = document.createElement('div');
-              row.className = 'stack';
-              row.style.borderTop = '1px solid var(--border)';
-              row.style.paddingTop = '8px';
+      // Apply filter (if any)
+      var list = activePolicy
+        ? billsAll.filter(function(b){ return String(b && b.policy_area || '') === activePolicy; })
+        : billsAll.slice();
 
-              // First line: TYPE NUM • DATE (+ pills)
-              var head = document.createElement('div');
-              var strong = document.createElement('strong'); strong.textContent = String(type + (num ? (' ' + num) : '')); head.appendChild(strong);
-              if (date) {
-                var sep = document.createTextNode(' • ');
-                head.appendChild(sep);
-                var span = document.createElement('span'); span.className = 'muted';
-                try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
-                head.appendChild(span);
-              }
-              // Purple 'Bipartisan' pill (if applicable)
-              if (b && b.bipartisan === true) {
-                head.appendChild(document.createTextNode(' '));
-                var bp = document.createElement('span');
-                bp.className = 'pill P';
-                bp.textContent = 'Bipartisan';
-                head.appendChild(bp);
-              }
-              // Neutral 'Became Law' pill after Bipartisan (if latest indicates Became Public Law)
-              if (latest && /became public law/i.test(latest)) {
-                head.appendChild(document.createTextNode(' '));
-                var bl = document.createElement('span');
-                bl.className = 'pill N';
-                bl.textContent = 'Became Law';
-                head.appendChild(bl);
-              }
+      var show = expandedSB ? list.slice(0, Math.min(10, list.length))
+                            : list.slice(0, Math.min(3, list.length));
 
-              row.appendChild(head);
+      show.forEach(function(b){
+        var type = fmtType(b && b.billType);
+        var num = String(b && b.number || '');
+        var date = String(b && b.introducedDate || '');
+        var title = String(b && b.title || '');
+        var latest = b && b.latestAction && b.latestAction.text ? String(b.latestAction.text) : '';
+        var policyArea = String(b && b.policy_area || '');
 
-              // Second line: bill title
-              if (title) {
-                var titleLine = document.createElement('div');
-                titleLine.textContent = title;
-                row.appendChild(titleLine);
-              }
+        var row = document.createElement('div');
+        row.className = 'stack';
+        row.style.borderTop = '1px solid var(--border)';
+        row.style.paddingTop = '8px';
 
-              // Third line: Latest action (muted)
-              if (latest) {
-                var meta = document.createElement('div');
-                meta.className = 'muted';
-                meta.textContent = 'Latest action: ' + latest;
-                row.appendChild(meta);
-              }
+        // First line: TYPE NUM • DATE (+ pills)
+        var head = document.createElement('div');
+        var strong = document.createElement('strong'); strong.textContent = String(type + (num ? (' ' + num) : '')); head.appendChild(strong);
+        if (date) {
+          var sep = document.createTextNode(' • ');
+          head.appendChild(sep);
+          var span = document.createElement('span'); span.className = 'muted';
+          try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
+          head.appendChild(span);
+        }
+        if (b && b.bipartisan === true) {
+          head.appendChild(document.createTextNode(' '));
+          var bp = document.createElement('span'); bp.className = 'pill P'; bp.textContent = 'Bipartisan'; head.appendChild(bp);
+        }
+        if (latest && /became public law/i.test(latest)) {
+          head.appendChild(document.createTextNode(' '));
+          var bl = document.createElement('span'); bl.className = 'pill N'; bl.textContent = 'Became Law'; head.appendChild(bl);
+        }
+        row.appendChild(head);
 
-              // Fourth line: Policy Area in neutral pill
-              if (policyArea) {
-                var subj = document.createElement('div');
-                var pill = document.createElement('span');
-                pill.className = 'pill N';
-                pill.textContent = policyArea;
-                subj.appendChild(pill);
-                row.appendChild(subj);
-              }
+        // Second line: title
+        if (title) {
+          var titleLine = document.createElement('div');
+          titleLine.textContent = title;
+          row.appendChild(titleLine);
+        }
 
-              billsWrap.appendChild(row);
-            });
+        // Third: latest action
+        if (latest) {
+          var meta = document.createElement('div');
+          meta.className = 'muted';
+          meta.textContent = 'Latest action: ' + latest;
+          row.appendChild(meta);
+        }
 
-            // Toggle button (like other lists)
-            var existingCtr = document.getElementById('sponsored-bills-ctr');
-            if (existingCtr) existingCtr.remove();
-            if (billsAll.length > 3) {
-              var ctr = document.createElement('div');
-              ctr.id = 'sponsored-bills-ctr';
-              ctr.style.paddingTop = '8px';
-              var btn = document.createElement('button');
-              btn.className = 'btn';
-              btn.textContent = expandedSB ? 'Show less' : 'Show more';
-              btn.addEventListener('click', function(e){ e.preventDefault(); expandedSB = !expandedSB; renderSponsoredBills(); });
-              ctr.appendChild(btn);
-              // Insert after the list
-              if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctr, billsWrap.nextSibling);
-            }
+        // Fourth: Policy Area (neutral pill)
+        if (policyArea) {
+          var subj = document.createElement('div');
+          var pill = document.createElement('span');
+          pill.className = 'pill N';
+          pill.textContent = policyArea;
+          subj.appendChild(pill);
+          row.appendChild(subj);
+        }
 
-            if (billsAll.length === 0) {
-              var empty = document.createElement('div');
-              empty.className = 'muted';
-              empty.textContent = 'No sponsored bills available.';
-              billsWrap.appendChild(empty);
-            }
-          }
+        billsWrap.appendChild(row);
+      });
 
-          renderSponsoredBills();
-        } catch(e){ /* non-fatal */ }
-      })();
+      // Toggle (placed after list)
+      var existingCtr = document.getElementById('sponsored-bills-ctr');
+      if (existingCtr) existingCtr.remove();
+      var listForToggle = activePolicy ? billsAll.filter(function(b){ return String(b && b.policy_area || '') === activePolicy; }) : billsAll;
+      if (listForToggle.length > 3) {
+        var ctr = document.createElement('div');
+        ctr.id = 'sponsored-bills-ctr';
+        ctr.style.paddingTop = '8px';
+        var btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.textContent = expandedSB ? 'Show less' : 'Show more';
+        btn.addEventListener('click', function(e){ e.preventDefault(); expandedSB = !expandedSB; renderSponsoredBills(); });
+        ctr.appendChild(btn);
+        if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctr, billsWrap.nextSibling);
+      }
+
+      if (list.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = activePolicy ? ('No sponsored bills in “' + activePolicy + '”.') : 'No sponsored bills available.';
+        billsWrap.appendChild(empty);
+      }
+      // Append data source footer to Signature Work card (once)
+      try {
+        var sigCard = billsWrap && billsWrap.closest ? billsWrap.closest('.card') : null;
+        if (sigCard && !sigCard.querySelector('.data-note-sig')) {
+          var f = document.createElement('div');
+          f.className = 'muted data-note-sig';
+          f.style.marginTop = '10px';
+          f.style.textAlign = 'left';
+          f.textContent = 'Data from Congress.gov • Updated Monthly';
+          sigCard.appendChild(f);
+        }
+      } catch(e) { /* ignore */ }
+    
+    }
+
+    // initial paint
+    renderSponsoredBills();
+  } catch(e){ /* non-fatal */ }
+})();
 /* KEY VOTES (existing) — left as-is */
       (function(){
         try {
@@ -985,6 +1194,17 @@ var row = document.createElement('div');
   }
 }
 renderKeyVotes();
+  // Append data source footer to Voting Record card
+  try {
+    if (vr && !vr.querySelector('.data-note-votes')) {
+      var foot = document.createElement('div');
+      foot.className = 'muted data-note-votes';
+      foot.style.marginTop = '10px';
+      foot.style.textAlign = 'left';
+      foot.textContent = 'Data from Voteview.com • Updated Weekly';
+      vr.appendChild(foot);
+    }
+  } catch(e) { /* ignore */ }
 } catch(e){ /* swallow errors */ }
       })();
 
