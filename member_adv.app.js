@@ -200,7 +200,9 @@
       right.appendChild(nameLine); right.appendChild(seat); right.appendChild(tenure); right.appendChild(commWrap);
       row.appendChild(img); row.appendChild(right);
       header.appendChild(row);
-      try{ window.__memberData = data; _updateCurrentIdeologyLine(data);   updateVotingInsetWithNominate(data); }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
+      try{ window.__memberData = data; _updateCurrentIdeologyLine(data);   updateVotingInsetWithNominate(data);
+      try{ _updateSimilarLine(data); }catch(e){}
+      }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
     }).catch(function(err){
       var header=byId('headerCard');
       if(header) header.textContent='Error loading member data.';
@@ -225,6 +227,7 @@ function ensureVotingRecordInset(){
       '.vr-inset-wrap{ position:relative; width:204px; height:200px; flex:0 0 204px; }',
       '.vr-axis-y{ position:absolute; left:-15px; top:90px; transform:translateY(-50%) rotate(-90deg); transform-origin:center; font-size:0.8em; color:rgba(0,0,0,0.55); }',
       '.vr-axis-x{ position:absolute; left:24px; top:184px; width:180px; text-align:center; font-size:0.8em; color:rgba(0,0,0,0.55); }'
+      , '.vr-similar{ margin-top: 12px; }'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -411,7 +414,23 @@ try{
   var title = card.querySelector('.section-title');
   if(title){ title.after(row); } else { card.appendChild(row); }
 
+  // Append 'Ideologically Similar' line under everything else in this card
+  if(!card.querySelector('.vr-similar')){
+    var similarLine = document.createElement('div');
+    similarLine.className = 'vr-similar';
+    var simLabel = document.createElement('span');
+    simLabel.className = 'vr-similar-label';
+    simLabel.style.fontWeight = '700';
+    simLabel.textContent = 'Ideologically Similar: ';
+    var simNames = document.createElement('span');
+    simNames.className = 'vr-similar-names';
+    simNames.textContent = '—';
+    similarLine.appendChild(simLabel); similarLine.appendChild(simNames);
+    card.appendChild(similarLine);
+  }
+
 }
+
 
 
 
@@ -1051,6 +1070,45 @@ function _refreshPartyMedianCheckboxState(){
     cb.title = ok ? '' : 'No party median data available for this member.';
   }catch(e){}
 }
+function _updateSimilarLine(member){
+  try{
+    var card = document.getElementById('adv-card-voting');
+    if(!card) return;
+    var line = card.querySelector('.vr-similar');
+    if(!line){
+      line = document.createElement('div');
+      line.className = 'vr-similar';
+      var label = document.createElement('span');
+      label.className = 'vr-similar-label';
+      label.style.fontWeight = '700';
+      label.textContent = 'Ideologically Similar: ';
+      var names = document.createElement('span');
+      names.className = 'vr-similar-names';
+      names.textContent = '—';
+      line.appendChild(label); line.appendChild(names);
+      card.appendChild(line);
+    }
+    var namesEl = line.querySelector('.vr-similar-names');
+    var m = member || (window.__memberData || window.memberData) || {};
+    var list = Array.isArray(m.ideologically_similar) ? m.ideologically_similar :
+               (Array.isArray((m.alignment||{}).ideologically_similar) ? (m.alignment||{}).ideologically_similar : []);
+    function fmt3(x){ var n = Number(x); return (isFinite(n) ? n.toFixed(3) : null); }
+    var out = [];
+    for(var i=0;i<list.length && out.length<3;i++){
+      var it = list[i];
+      if(!it) continue;
+      if(typeof it === 'string'){
+        out.push(it);
+      } else {
+        var nm = (typeof it.name === 'string') ? it.name : String(it.name||'');
+        var d = fmt3(it.distance);
+        out.push(d ? (nm + ' (' + d + ')') : nm);
+      }
+    }
+    namesEl.textContent = out.length ? out.join(', ') : '—';
+  }catch(e){}
+}
+
 function init(){
     ensureAdvancedCards();
     showAdvancedAndHideBasic();
