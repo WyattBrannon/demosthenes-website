@@ -200,7 +200,7 @@
       right.appendChild(nameLine); right.appendChild(seat); right.appendChild(tenure); right.appendChild(commWrap);
       row.appendChild(img); row.appendChild(right);
       header.appendChild(row);
-      try{ updateVotingInsetWithNominate(data); }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
+      try{ window.__memberData = data;  updateVotingInsetWithNominate(data); }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
     }).catch(function(err){
       var header=byId('headerCard');
       if(header) header.textContent='Error loading member data.';
@@ -290,12 +290,63 @@ function ensureVotingRecordInset(){
   copy.appendChild(line);
 
   var expl = document.createElement('div');
+
+  var cbWrap = document.createElement('div');
+  cbWrap.className = 'vr-ideology-toggle';
+  var cbLabel = document.createElement('label');
+  cbLabel.className = 'form-check';
+  var cbInput = document.createElement('input');
+  cbInput.type = 'checkbox';
+  cbInput.id = 'show-historical-ideology';
+  cbInput.name = 'show-historical-ideology';
+  var cbText = document.createElement('span');
+  cbText.textContent = 'Show historical ideology';
+  cbLabel.appendChild(cbInput);
+  cbLabel.appendChild(cbText);
+  cbWrap.appendChild(cbLabel);
+  copy.appendChild(cbWrap);
+
   expl.className = 'muted';
   expl.textContent = 'Ideology is determined by DW-NOMINATE scores. The first number represents the congressperson\'s economic vote score, which represents their voting record on economic votes, while the second number represents the congressperson\'s non-economic vote score. Both numbers range from -1 (most liberal) to +1 (most conservative).';
   copy.appendChild(expl);
 
   row.appendChild(inset);
   row.appendChild(copy);
+  _bindHistoricalCheckbox();
+
+// Wire checkbox toggle for historical ideology boxes
+try{
+  var cb = document.getElementById('show-historical-ideology');
+  if(cb && !cb._histBound){
+    cb._histBound = true;
+    cb.addEventListener('change', function(){
+  var inset = _getInset();
+  var dot = _getDot();
+  if(!inset) return;
+  if(cb.checked){
+    if(dot){ dot.style.display='none'; }
+    var data = _getMemberData();
+    if(data){ renderHistoricalNominate(inset, data); }
+  }else{
+    clearHistoricalNominate(inset);
+    if(dot){ dot.style.display=''; }
+  }
+});
+// Render immediately if it starts checked
+(function(){
+  if(cb.checked){
+    var inset0 = _getInset(); var dot0 = _getDot();
+    if(dot0){ dot0.style.display='none'; }
+    var data0 = _getMemberData();
+    if(inset0 && data0){ renderHistoricalNominate(inset0, data0); }
+  } else {
+    // just in case leftover nodes exist
+    clearHistoricalNominate(_getInset());
+  }
+})();
+}
+}catch(e){}
+
 
   // Insert after the section title
   var title = card.querySelector('.section-title');
@@ -391,9 +442,368 @@ function ensureVotingRecordInset(){
     }
     dot.style.left = (x - half) + 'px';
     dot.style.top  = (y - half) + 'px';
+    // Respect checkbox state after dot move
+    try{
+      _bindHistoricalCheckbox();
+      var cbNOW = document.getElementById('show-historical-ideology');
+      var insetNOW = _getInset();
+      var dotNOW = _getDot();
+      if(cbNOW && insetNOW){
+        if(cbNOW.checked){
+          if(dotNOW){ dotNOW.style.display='none'; }
+          _renderHistorical(insetNOW, data);
+        }else{
+          _clearHistorical(insetNOW);
+          if(dotNOW){ dotNOW.style.display=''; }
+        }
+      }
+    }catch(e){}
+
+    try{
+      var cbNOW = document.getElementById('show-historical-ideology');
+      var dotNOW = _getDot();
+      if(cbNOW){
+        if(cbNOW.checked){
+          if(dotNOW){ dotNOW.style.display='none'; }
+          renderHistoricalNominate(inset, data);
+        }else{
+          if(dotNOW){ dotNOW.style.display=''; }
+          clearHistoricalNominate(inset);
+        }
+      }
+    }catch(e){}
+
+// Respect historical toggle
+try{
+  var cb = document.getElementById('show-historical-ideology');
+  if(cb){
+    if(cb.checked){
+      if(dot){ dot.style.display='none'; }
+      renderHistoricalNominate(inset, data);
+    }else{
+      if(dot){ dot.style.display=''; }
+      clearHistoricalNominate(inset);
+    }
+  }
+}catch(e){}
+
+    // Also render or clear historical dots based on checkbox state
+    try{
+      var cb = document.getElementById('show-historical-ideology');
+      if(cb){
+        if(cb.checked){ renderHistoricalNominate(inset, data); }
+        else{ clearHistoricalNominate(inset); }
+      }
+    }catch(e){}
   }
 
-  function init(){
+  
+
+// --- Historical ideology rendering ---
+function _getInsetSize(inset){
+  var w = 0;
+  try{
+    w = parseFloat(inset.style.width||'0');
+    if(!(w>0)){
+      w = parseFloat(getComputedStyle(inset).width||'0');
+    }
+  }catch(e){}
+  if(!(w>0)) w = 180;
+  return w;
+}
+
+function _mapDimsToXY(dim1, dim2, size, half){
+  var x = ((dim1 + 1) / 2) * size;      // -1 => left, +1 => right
+  var y = ((1 - dim2) / 2) * size;      // +1 => top, -1 => bottom
+  x = Math.max(half, Math.min(size - half, x));
+  y = Math.max(half, Math.min(size - half, y));
+  return {x:x, y:y};
+}
+
+function clearHistoricalNominate(inset){
+  try{
+    var nodes = Array.prototype.slice.call(inset.querySelectorAll('.vr-hdot'));
+    for(var i=0;i<nodes.length;i++){ nodes[i].remove(); }
+  }catch(e){}
+}
+
+function renderHistoricalNominate(inset, member){
+    try{ if(inset && (!inset.style.position || inset.style.position==='')) inset.style.position='relative'; }catch(e){}
+  if(!inset || !member || !Array.isArray(member.dw_nominate) || member.dw_nominate.length===0) return;
+  var size = _getInsetSize(inset);
+  var dotSize = 10, half = dotSize/2;
+
+  // Sort by congress ascending (oldest first)
+  var arr = member.dw_nominate.slice().sort(function(a,b){ return (a.congress||0) - (b.congress||0); });
+  var minC = arr[0].congress || 0;
+  var maxC = arr[arr.length-1].congress || minC;
+  var denom = (maxC - minC) || 1;
+
+  // Remove any existing historical dots
+  clearHistoricalNominate(inset);
+
+  for(var i=0;i<arr.length;i++){
+    var it = arr[i] || {};
+    var d1 = typeof it.dim1==='number'? it.dim1 : parseFloat(it.dim1);
+    var d2 = typeof it.dim2==='number'? it.dim2 : parseFloat(it.dim2);
+    if(!isFinite(d1) || !isFinite(d2)) continue;
+    // Clamp to [-1,1]
+    if(d1 < -1) d1 = -1; if(d1>1) d1=1;
+    if(d2 < -1) d2 = -1; if(d2>1) d2=1;
+
+    var pos = _mapDimsToXY(d1, d2, size, half);
+
+    // grayscale from near-white (oldest) to black (newest)
+    var t = ( (it.congress||minC) - minC ) / denom;  // 0 -> oldest, 1 -> newest
+    if(t<0) t=0; if(t>1) t=1;
+    var g = Math.round(255 * (1 - t));  // 255 -> 0
+    // keep slightly visible edge
+    var bg = 'rgb(' + g + ',' + g + ',' + g + ')';
+
+    var box = document.createElement('div');
+    box.className = 'vr-hdot';
+    box.style.position='absolute';
+    box.style.width = box.style.height = dotSize + 'px';
+      box.style.borderRadius = borderRadius;
+    box.style.left = (pos.x - half) + 'px';
+    box.style.top  = (pos.y - half) + 'px';
+    box.style.background = bg;
+    box.style.border = '1px solid rgba(255,255,255,0.8)';
+    box.style.borderRadius = '2px';
+    // Older boxes appended first; newer later so newer are on top naturally
+    box.style.zIndex = String(1 + i);
+    box.style.pointerEvents = 'none';
+    inset.appendChild(box);
+  }
+}
+
+
+// === Historical ideology robust helpers ===
+function _getCard(){ return document.getElementById('adv-card-voting'); }
+function _getInset(){ var c=document.getElementById('adv-card-voting'); return c? c.querySelector('.vr-inset') : document.querySelector('.vr-inset'); }
+function _getDot(){ var i=_getInset(); return i? i.querySelector('.vr-dot') : null; }
+  function _getMemberData(){ return (window && (window.__memberData||window.memberData)) || null; }
+
+function _parseNum(v){
+  var n = (typeof v==='number')? v : parseFloat(v);
+  return (isFinite(n)? n : NaN);
+}
+
+function _insetSizePx(inset){
+  var w = 0;
+  if(!inset) return 0;
+  try{
+    w = parseFloat(getComputedStyle(inset).width);
+  }catch(e){}
+  if(!(w>0)){
+    try{ w = parseFloat(inset.style.width||'0'); }catch(e){}
+  }
+  if(!(w>0)) w = 180;
+  return w;
+}
+
+function clearHistoricalNominate(inset){
+  inset = inset || _getInset();
+  if(!inset) return;
+  try{
+    var nodes = Array.prototype.slice.call(inset.querySelectorAll('.historical-box,.vr-hdot'));
+    for(var i=0;i<nodes.length;i++){ nodes[i].remove(); }
+  }catch(e){}
+}
+
+function renderHistoricalNominate(inset, member){
+  inset = inset || _getInset();
+  if(!inset || !member || !Array.isArray(member.dw_nominate) || member.dw_nominate.length===0) return;
+  var series = member.dw_nominate.slice().filter(Boolean);
+  if(series.length===0) return;
+
+  // sort by congress ascending (oldest first)
+  series.sort(function(a,b){ return (_parseNum(a.congress)||0) - (_parseNum(b.congress)||0); });
+
+  var minC = _parseNum(series[0].congress)||0;
+  var maxC = _parseNum(series[series.length-1].congress)||minC;
+  var denom = (maxC - minC) || 1;
+
+  var size = _insetSizePx(inset);
+  var dotSize = _getMainDotSize(), half = dotSize/2; var borderRadius = (dotSize/6)+'px';
+
+  clearHistoricalNominate(inset);
+
+  for(var i=0;i<series.length;i++){
+    var it = series[i];
+    var d1 = _parseNum(it.dim1);
+    var d2 = _parseNum(it.dim2);
+    if(!isFinite(d1) || !isFinite(d2)) continue;
+    if(d1<-1) d1=-1; if(d1>1) d1=1;
+    if(d2<-1) d2=-1; if(d2>1) d2=1;
+
+    var x = ((d1 + 1) / 2) * size;
+    var y = ((1 - d2) / 2) * size;
+    x = Math.max(half, Math.min(size - half, x));
+    y = Math.max(half, Math.min(size - half, y));
+
+    var t = ((_parseNum(it.congress)||minC) - minC) / denom; if(t<0) t=0; if(t>1) t=1;
+    var shade = Math.round(255 * (1 - t)); // oldest -> white, newest -> black
+
+    var box = document.createElement('div');
+    box.className = 'historical-box vr-hdot';
+    box.style.position='absolute';
+    box.style.width = box.style.height = dotSize + 'px';
+    box.style.left = (x - half) + 'px';
+    box.style.top  = (y - half) + 'px';
+    box.style.background = 'rgb(' + shade + ',' + shade + ',' + shade + ')';
+    box.style.border = '1px solid rgba(255,255,255,0.8)';
+    box.style.borderRadius = '2px';
+    box.style.zIndex = String(1 + i);   // older first, newer last (on top)
+    box.style.pointerEvents = 'none';
+    inset.appendChild(box);
+  }
+}
+
+  function _countHistoricalBoxes(){ var i=_getInset(); return i? i.querySelectorAll('.historical-box').length : 0; }
+
+
+// ===== Historical ideology robust wiring =====
+function _getCard(){ return document.getElementById('adv-card-voting'); }
+function _getInset(){ var c=_getCard(); return c? c.querySelector('.vr-inset') : document.querySelector('.vr-inset'); }
+function _getDot(){ var i=_getInset(); return i? i.querySelector('.vr-dot') : null; }
+function _getMemberData(){ return (window && (window.__memberData||window.memberData)) || null; }
+
+function _ensureInsetReady(cb){
+  // Wait for inset to exist and have layout width
+  var tries = 0;
+  function tick(){
+    var inset = _getInset();
+    var w = inset ? (parseFloat(getComputedStyle(inset).width)||inset.offsetWidth||0) : 0;
+    if(inset && w>0){
+      try{ if(!inset.style.position) inset.style.position='relative'; }catch(e){}
+      cb(inset);
+    }else if(tries++ < 20){
+      // try across a few animation frames
+      requestAnimationFrame(tick);
+    }else{
+      // final attempt after small timeout
+      setTimeout(function(){ var i=_getInset(); if(i){ try{ if(!i.style.position) i.style.position='relative'; }catch(e){} cb(i); } }, 50);
+    }
+  }
+  tick();
+}
+
+function _clearHistorical(inset){
+  inset = inset || _getInset();
+  if(!inset) return;
+  try{
+    var nodes = Array.prototype.slice.call(inset.querySelectorAll('.historical-box,.vr-hdot'));
+    for(var i=0;i<nodes.length;i++){ nodes[i].remove(); }
+  }catch(e){}
+}
+
+function _renderHistorical(inset, member){
+  inset = inset || _getInset();
+  var data = member || _getMemberData();
+  if(!inset || !data || !Array.isArray(data.dw_nominate) || !data.dw_nominate.length) return;
+
+  var series = data.dw_nominate.slice().filter(Boolean).sort(function(a,b){
+    var ac = (typeof a.congress==='number')?a.congress:parseFloat(a.congress)||0;
+    var bc = (typeof b.congress==='number')?b.congress:parseFloat(b.congress)||0;
+    return ac-bc;
+  });
+  var minC = (typeof series[0].congress==='number')?series[0].congress:parseFloat(series[0].congress)||0;
+  var maxC = (typeof series[series.length-1].congress==='number')?series[series.length-1].congress:parseFloat(series[series.length-1].congress)||minC;
+  var denom = (maxC-minC)||1;
+
+  // size
+  var size = parseFloat(getComputedStyle(inset).width)||inset.offsetWidth||180;
+  var dotSize = _getMainDotSize(), half = dotSize/2;
+
+  _clearHistorical(inset);
+
+  for(var i=0;i<series.length;i++){
+    var it = series[i]||{};
+    var d1 = (typeof it.dim1==='number')?it.dim1:parseFloat(it.dim1);
+    var d2 = (typeof it.dim2==='number')?it.dim2:parseFloat(it.dim2);
+    if(!isFinite(d1)||!isFinite(d2)) continue;
+    if(d1<-1) d1=-1; if(d1>1) d1=1;
+    if(d2<-1) d2=-1; if(d2>1) d2=1;
+
+    var x = ((d1 + 1) / 2) * size;
+    var y = ((1 - d2) / 2) * size;
+    x = Math.max(half, Math.min(size - half, x));
+    y = Math.max(half, Math.min(size - half, y));
+
+    var t = (((typeof it.congress==='number')?it.congress:parseFloat(it.congress)||minC) - minC)/denom;
+    if(t<0) t=0; if(t>1) t=1;
+    var shade = Math.round(255*(1-t));
+
+    var box = document.createElement('div');
+    box.className = 'historical-box vr-hdot';
+    box.style.position='absolute';
+    box.style.width = box.style.height = dotSize + 'px';
+    box.style.left = (x - half) + 'px';
+    box.style.top  = (y - half) + 'px';
+    box.style.background = 'rgb('+shade+','+shade+','+shade+')';
+    box.style.border = '1px solid rgba(255,255,255,0.8)';
+    box.style.borderRadius = '2px';
+    box.style.zIndex = String(1+i);
+    box.style.pointerEvents = 'none';
+    inset.appendChild(box);
+  }
+
+  // Retry once next frame if nothing appended (e.g., size reported as 0 first frame)
+  try{
+    if(!inset.querySelector('.historical-box') && typeof requestAnimationFrame==='function'){
+      requestAnimationFrame(function(){ _renderHistorical(inset, member); });
+    }
+  }catch(e){}
+}
+
+
+  function _getMainDotSize(){
+  var dot = _getDot();
+  if(dot){
+    try{
+      var cs = getComputedStyle(dot);
+      var w = parseFloat(cs.width);
+      var h = parseFloat(cs.height);
+      if(isFinite(w) && w>0 && isFinite(h) && h>0){
+        return Math.max(w,h);
+      }
+    }catch(e){}
+    if(dot.style && dot.style.width){
+      var w2 = parseFloat(dot.style.width);
+      if(isFinite(w2) && w2>0) return w2;
+    }
+  }
+  return 12;
+}
+function _bindHistoricalCheckbox(){
+  var cb = document.getElementById('show-historical-ideology');
+  if(!cb || cb._histBound) return;
+  cb._histBound = true;
+
+  cb.addEventListener('change', function(){
+    _ensureInsetReady(function(inset){
+      var dot = _getDot();
+      if(cb.checked){
+        if(dot){ dot.style.display='none'; }
+        _renderHistorical(inset, _getMemberData());
+      }else{
+        _clearHistorical(inset);
+        if(dot){ dot.style.display=''; }
+      }
+    });
+  });
+
+  // If already checked on load, render now
+  if(cb.checked){
+    _ensureInsetReady(function(inset){
+      var dot = _getDot();
+      if(dot){ dot.style.display='none'; }
+      _renderHistorical(inset, _getMemberData());
+    });
+  }
+}
+function init(){
     ensureAdvancedCards();
     showAdvancedAndHideBasic();
     renderHeaderOnly();
