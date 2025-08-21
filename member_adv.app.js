@@ -221,7 +221,10 @@ function ensureVotingRecordInset(){
       '.vr-row{ display:flex; align-items:flex-start; gap:16px; margin-top:8px; }',
       '.vr-inset{ width:180px; height:180px; border-radius:12px; flex:0 0 180px; border:1px solid rgba(0,0,0,0.08);',
       '  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.08); }',
-      '.vr-copy{ flex:1; }'
+      '.vr-copy{ flex:1; }',
+      '.vr-inset-wrap{ position:relative; width:204px; height:200px; flex:0 0 204px; }',
+      '.vr-axis-y{ position:absolute; left:-15px; top:90px; transform:translateY(-50%) rotate(-90deg); transform-origin:center; font-size:0.8em; color:rgba(0,0,0,0.55); }',
+      '.vr-axis-x{ position:absolute; left:24px; top:184px; width:180px; text-align:center; font-size:0.8em; color:rgba(0,0,0,0.55); }'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -339,7 +342,33 @@ copy.appendChild(pmWrap);
   expl.textContent = 'Ideology is determined by DW-NOMINATE scores. The first number represents the congressperson\'s economic vote score, which represents their voting record on economic votes, while the second number represents the congressperson\'s non-economic vote score. Both numbers range from -1 (most liberal) to +1 (most conservative).';
   copy.appendChild(expl);
 
-  row.appendChild(inset);
+  
+  // Build inset wrapper + axes
+  var insetWrap = document.createElement('div');
+  insetWrap.className = 'vr-inset-wrap';
+
+  // Left (vertical) axis label: "- Other +"
+  var axisY = document.createElement('div');
+  axisY.className = 'vr-axis-y muted';
+  axisY.textContent = '- Other +';
+  insetWrap.appendChild(axisY);
+
+  // Position inset within wrapper
+  inset.style.position = 'absolute';
+  inset.style.left = '24px';
+  inset.style.top = '0';
+
+  insetWrap.appendChild(inset);
+
+  // Bottom (horizontal) axis label: "- Economic +"
+  var axisX = document.createElement('div');
+  axisX.className = 'vr-axis-x muted';
+  axisX.textContent = '- Economic +';
+  insetWrap.appendChild(axisX);
+
+  // Append the wrapper to the row instead of the inset directly
+  row.appendChild(insetWrap);
+
   row.appendChild(copy);
   if (typeof _bindPartyMedianCheckbox === 'function') { _bindPartyMedianCheckbox(); }
   _bindHistoricalCheckbox();
