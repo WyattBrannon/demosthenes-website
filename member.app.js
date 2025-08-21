@@ -135,6 +135,7 @@
       fetch(yamlURL,{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' for '+yamlURL); return r.text(); })
     ]).then(function(results){
       var data = results[0] || {}, yamlText = results[1] || '';
+      try { window.__memberData = data; } catch(e){}
       // --- District Map: render small Leaflet map with district polygon over OSM basemap ---
       try {
         (function(){
@@ -1117,12 +1118,13 @@ dialBipart.appendChild(sub2b);
           var vr = null;
           for (var i=0;i<cards.length;i++){
             var h = cards[i].querySelector('.section-title');
+            if (cards[i].closest && cards[i].closest('#advCards')) { continue; }
             if (h && (h.textContent||'').trim() === 'Voting Record'){ vr = cards[i]; break; }
           }
           if (!vr) return;
           var headers = vr.querySelectorAll('.section-title');
           var kvHeader = null;
-          for (var j=0;j<headers.length;j++){ if ((headers[j].textContent||'').trim() === 'Recent Major Votes'){ kvHeader = headers[j]; break; } }
+          for (var j=0;j<headers.length;j++){ var t=(headers[j].textContent||'').trim(); if (t === 'Recent Major Votes'){ kvHeader = headers[j]; break; } }
           if (!kvHeader) return;
 
           var root = kvHeader.nextElementSibling;
