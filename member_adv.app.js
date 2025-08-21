@@ -209,86 +209,101 @@
   }
 
   
-  function ensureVotingRecordInset(){
-    var card = document.getElementById('adv-card-voting');
-    if(!card) return;
-    // Remove any existing basic placeholder text in this card
-    try{
-      var _kids = Array.prototype.slice.call(card.children);
-      for(var i=0;i<_kids.length;i++){
-        var el=_kids[i];
-        if(el && el.classList && el.classList.contains('muted')){ el.remove(); }
-      }
-    }catch(e){}
+function ensureVotingRecordInset(){
+  var card = document.getElementById('adv-card-voting');
+  if(!card) return;
 
-    // Add styles once
-    if(!document.getElementById('adv-vr-style')){
-      var st = document.createElement('style');
-      st.id = 'adv-vr-style';
-      st.textContent = [
-        '.vr-row{ display:flex; align-items:flex-start; gap:16px; margin-top:8px; }',
-        '.vr-copy{ flex:1; }',
-        '.vr-inset{ flex:0 0 180px; }',
-        '.vr-inset{',
-        '  width: 180px;',
-        '  height: 180px;',
-        '  border-radius: 12px; /* slightly rounded */',
-        '  border: 1px solid rgba(0,0,0,0.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.08);',
-        '  /* Four-corner gradient: red (UL), blue (UR), green (LL), yellow (LR) */',
-        '  background:',
-        '    radial-gradient(120% 120% at 0%   0%,   rgba(255,0,0,0.95),    rgba(255,0,0,0) 60%),',
-        '    radial-gradient(120% 120% at 100% 0%,   rgba(0,102,255,0.95),  rgba(0,102,255,0) 60%),',
-        '    radial-gradient(120% 120% at 0%   100%, rgba(0,160,80,0.95),   rgba(0,160,80,0) 60%),',
-        '    radial-gradient(120% 120% at 100% 100%, rgba(255,214,0,0.95),  rgba(255,214,0,0) 60%);',
-        '}',
-        '.vr-row{ display:flex; align-items:center; gap:16px; }',
-        '.vr-copy{ flex:1; }'
-      ].join('\\n');
-      document.head.appendChild(st);
-    }
-    // Only add once
-    if(card.querySelector('.vr-inset')) return;
-    var row = document.createElement('div');
-    row.className = 'vr-row';
-    row.style.alignItems = 'flex-start';
-    var inset = document.createElement('div');
-    inset.className = 'vr-inset';
-    inset.setAttribute('aria-hidden','true');
-    inset.style.width='180px';
-    inset.style.height='180px';
-    inset.style.borderRadius='12px';
-    inset.style.flex='0 0 180px';
-    inset.style.border='1px solid rgba(0,0,0,0.08)';
-    inset.style.boxShadow='inset 0 0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.08)';
-    inset.style.background = 'radial-gradient(120% 120% at 0% 0%, rgba(255,0,0,0.95), rgba(255,0,0,0) 60%),'+
-                             'radial-gradient(120% 120% at 100% 0%, rgba(0,102,255,0.95), rgba(0,102,255,0) 60%),'+
-                             'radial-gradient(120% 120% at 0% 100%, rgba(0,160,80,0.95), rgba(0,160,80,0) 60%),'+
-                             'radial-gradient(120% 120% at 100% 100%, rgba(255,214,0,0.95), rgba(255,214,0,0) 60%)';
-    var copy = document.createElement('div');
-    copy.className = 'vr-copy';
-    var line = document.createElement('div'); line.className = 'vr-ideology';
-    var label = document.createElement('span'); label.className='vr-ideology-label'; label.textContent='Ideology: ';
-    label.style.fontWeight='700';
-    var values = document.createElement('span'); values.className='vr-ideology-values'; values.textContent='(—, —)';
-    line.appendChild(label); line.appendChild(values);
-    // match the section title font size
-    var titleEl = card.querySelector('.section-title');
-    try{ if(titleEl){ var fs = window.getComputedStyle(titleEl).fontSize; if(fs){ line.style.fontSize = fs; } } }catch(e){}
-    copy.appendChild(line);
-    var expl = document.createElement('div');
-    expl.className = 'muted';
-    expl.textContent = 'Ideology is determined by DW-NOMINATE scores. The first number represents the congressperson\'s economic vote score, which represents their ideology on economic votes, while the second number represents the congressperson\'s non-economic vote score. Both numbers range from -1 (most liberal) to +1 (most conservative).';
-    copy.appendChild(expl);
-    row.appendChild(inset);
-    row.appendChild(copy);
-    // Insert after the section title
-    var title = card.querySelector('.section-title');
-    if(title && title.nextSibling){
-      title.parentNode.insertBefore(row, title.nextSibling);
-    }else{
-      card.appendChild(row);
-    }
+  // CSS (desktop + mobile) — inject once
+  if(!document.getElementById('adv-vr-style')){
+    var st = document.createElement('style');
+    st.id = 'adv-vr-style';
+    st.textContent = [
+      '.vr-row{ display:flex; align-items:flex-start; gap:16px; margin-top:8px; }',
+      '.vr-inset{ width:180px; height:180px; border-radius:12px; flex:0 0 180px; border:1px solid rgba(0,0,0,0.08);',
+      '  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.08); }',
+      '.vr-copy{ flex:1; }'
+    ].join('\n');
+    document.head.appendChild(st);
   }
+  if(!document.getElementById('adv-vr-style-mobile')){
+    var mq = document.createElement('style');
+    mq.id = 'adv-vr-style-mobile';
+    mq.textContent = [
+      '@media (max-width: 700px){',
+      '  .vr-row{ flex-direction: column; align-items: center !important; }',
+      '  .vr-inset{ margin-left:auto; margin-right:auto; }',
+      '  .vr-copy{ width:100%; }',
+      '}'
+    ].join('\n');
+    document.head.appendChild(mq);
+  }
+
+  // Only add once
+  if(card.querySelector('.vr-row')) return;
+
+  var row = document.createElement('div');
+  row.className = 'vr-row';
+
+  var inset = document.createElement('div');
+  inset.className = 'vr-inset';
+  inset.setAttribute('aria-hidden','true');
+  // Inline styles ensure it shows even if CSS fails
+  inset.style.width='180px';
+  inset.style.height='180px';
+  inset.style.borderRadius='12px';
+  inset.style.flex='0 0 180px';
+  inset.style.border='1px solid rgba(0,0,0,0.08)';
+  inset.style.boxShadow='inset 0 0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.08)';
+  inset.style.position = 'relative';
+  inset.style.background = 'radial-gradient(120% 120% at 0% 0%, rgba(255,0,0,0.95), rgba(255,0,0,0) 60%), ' +
+                           'radial-gradient(120% 120% at 100% 0%, rgba(0,102,255,0.95), rgba(0,102,255,0) 60%), ' +
+                           'radial-gradient(120% 120% at 0% 100%, rgba(0,160,80,0.95), rgba(0,160,80,0) 60%), ' +
+                           'radial-gradient(120% 120% at 100% 100%, rgba(255,214,0,0.95), rgba(255,214,0,0) 60%)';
+
+  var copy = document.createElement('div');
+  copy.className = 'vr-copy';
+
+  var line = document.createElement('div');
+  line.className = 'vr-ideology';
+
+  var label = document.createElement('span');
+  label.className='vr-ideology-label';
+  label.textContent='Ideology: ';
+  label.style.fontWeight='700';
+
+  var values = document.createElement('span');
+  values.className='vr-ideology-values';
+  values.textContent='(—, —)';
+
+  line.appendChild(label);
+  line.appendChild(values);
+
+  // Match the section title font size
+  try{
+    var titleEl = card.querySelector('.section-title');
+    if(titleEl){
+      var fs = window.getComputedStyle(titleEl).fontSize;
+      if(fs){ line.style.fontSize = fs; }
+    }
+  }catch(e){}
+
+  copy.appendChild(line);
+
+  var expl = document.createElement('div');
+  expl.className = 'muted';
+  expl.textContent = 'Ideology is determined by DW-NOMINATE scores. The first number represents the congressperson\'s economic vote score, which represents their voting record on economic votes, while the second number represents the congressperson\'s non-economic vote score. Both numbers range from -1 (most liberal) to +1 (most conservative).';
+  copy.appendChild(expl);
+
+  row.appendChild(inset);
+  row.appendChild(copy);
+
+  // Insert after the section title
+  var title = card.querySelector('.section-title');
+  if(title){ title.after(row); } else { card.appendChild(row); }
+
+}
+
+
 
   
   function _readNum(n){ var x = (typeof n==='string')? parseFloat(n): (typeof n==='number'? n: NaN); return isFinite(x)? x: NaN; }
