@@ -200,7 +200,7 @@
       right.appendChild(nameLine); right.appendChild(seat); right.appendChild(tenure); right.appendChild(commWrap);
       row.appendChild(img); row.appendChild(right);
       header.appendChild(row);
-      try{ window.__memberData = data;  updateVotingInsetWithNominate(data); }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
+      try{ window.__memberData = data; _updateCurrentIdeologyLine(data);   updateVotingInsetWithNominate(data); }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
     }).catch(function(err){
       var header=byId('headerCard');
       if(header) header.textContent='Error loading member data.';
@@ -268,7 +268,7 @@ function ensureVotingRecordInset(){
 
   var label = document.createElement('span');
   label.className='vr-ideology-label';
-  label.textContent='Ideology: ';
+  label.textContent='Overall ideology: ';
   label.style.fontWeight='700';
 
   var values = document.createElement('span');
@@ -289,6 +289,18 @@ function ensureVotingRecordInset(){
 
   copy.appendChild(line);
 
+// Current ideology line (smaller, not muted)
+var currentLine = document.createElement('div');
+currentLine.className = 'vr-ideology-current';
+currentLine.style.fontSize = '0.9em';
+  currentLine.classList.add('vr-historical-label');
+  currentLine.style.fontSize = '';
+  currentLine.style.marginTop = '4px';
+currentLine.style.marginTop = '2px';
+currentLine.textContent = 'Current ideology: (—, —)';
+copy.appendChild(currentLine);
+
+
   var expl = document.createElement('div');
 
   var cbWrap = document.createElement('div');
@@ -304,6 +316,23 @@ function ensureVotingRecordInset(){
   cbLabel.appendChild(cbInput);
   cbLabel.appendChild(cbText);
   cbWrap.appendChild(cbLabel);
+  
+// Party median toggle (appears above historical checkbox)
+var pmWrap = document.createElement('div');
+pmWrap.className = 'vr-ideology-toggle';
+var pmLabel = document.createElement('label');
+pmLabel.className = 'form-check';
+var pmInput = document.createElement('input');
+pmInput.type = 'checkbox';
+pmInput.id = 'show-party-median';
+pmInput.name = 'show-party-median';
+var pmText = document.createElement('span');
+pmText.textContent = 'Show party median';
+pmLabel.appendChild(pmInput);
+pmLabel.appendChild(pmText);
+pmWrap.appendChild(pmLabel);
+copy.appendChild(pmWrap);
+
   copy.appendChild(cbWrap);
 
   expl.className = 'muted';
@@ -312,6 +341,7 @@ function ensureVotingRecordInset(){
 
   row.appendChild(inset);
   row.appendChild(copy);
+  if (typeof _bindPartyMedianCheckbox === 'function') { _bindPartyMedianCheckbox(); }
   _bindHistoricalCheckbox();
 
 // Wire checkbox toggle for historical ideology boxes
@@ -442,6 +472,33 @@ try{
     }
     dot.style.left = (x - half) + 'px';
     dot.style.top  = (y - half) + 'px';
+    // Party median refresh + render-on-check
+    try{
+      _refreshPartyMedianCheckboxState();
+      var cbPM = document.getElementById('show-party-median');
+      if(cbPM && cbPM.checked){
+        _renderPartyMedian(_getInset(), data);
+      }else{
+        _clearPartyMedian(_getInset());
+      }
+    }catch(e){}
+    // R
+    // Refresh party median checkbox state now that data is available
+    try{ _refreshPartyMedianCheckboxState(); }catch(e){}
+    // Respect party median toggle
+    try{
+      var cbPM = document.getElementById('show-party-median');
+      var insetPM = _getInset();
+      if(cbPM && insetPM){
+        if(cbPM.checked){
+          _renderPartyMedian(insetPM, data);
+        }else{
+          _clearPartyMedian(insetPM);
+        }
+      }
+    }catch(e){}
+    _updateCurrentIdeologyLine(data);
+
     // Respect checkbox state after dot move
     try{
       _bindHistoricalCheckbox();
@@ -803,6 +860,168 @@ function _bindHistoricalCheckbox(){
     });
   }
 }
+
+
+function _getLatestNominateDims(member){
+  try{
+    var arr = (member && Array.isArray(member.dw_nominate)) ? member.dw_nominate.slice().filter(Boolean) : [];
+    if(!arr.length) return null;
+    arr.sort(function(a,b){
+      var ac = (typeof a.congress==='number')?a.congress:parseFloat(a.congress)||0;
+      var bc = (typeof b.congress==='number')?b.congress:parseFloat(b.congress)||0;
+      return bc - ac; // newest first
+    });
+    var it = arr[0] || {};
+    var d1 = (typeof it.dim1==='number')?it.dim1:parseFloat(it.dim1);
+    var d2 = (typeof it.dim2==='number')?it.dim2:parseFloat(it.dim2);
+    if(!isFinite(d1) || !isFinite(d2)) return null;
+    // Clamp to [-1,1]
+    if(d1 < -1) d1 = -1; if(d1>1) d1=1;
+    if(d2 < -1) d2 = -1; if(d2>1) d2=1;
+    return {dim1:d1, dim2:d2};
+  }catch(e){ return null; }
+}
+
+function _updateCurrentIdeologyLine(member){
+  try{
+    var card = document.getElementById('adv-card-voting');
+    if(!card) return;
+    var el = card.querySelector('.vr-ideology-current');
+    if(!el) return;
+    var dims = _getLatestNominateDims(member);
+    if(!dims){ el.textContent = 'Current ideology: (—, —)'; return; }
+    el.textContent = 'Current ideology: (' + dims.dim1.toFixed(3) + ', ' + dims.dim2.toFixed(3) + ')';
+  }catch(e){}
+}
+
+
+// === Party median rendering ===
+function _parseNum(v){
+  var n = (typeof v==='number')? v : parseFloat(v);
+  return (isFinite(n)? n : NaN);
+}
+
+function _getCard(){ return document.getElementById('adv-card-voting'); }
+function _getInset(){ var c=_getCard(); return c? c.querySelector('.vr-inset') : document.querySelector('.vr-inset'); }
+function _getDot(){ var i=_getInset(); return i? i.querySelector('.vr-dot') : null; }
+function _getMemberData(){ return (window && (window.__memberData||window.memberData)) || null; }
+function _getMainDotSize(){
+  var dot = _getDot();
+  if(dot){
+    try{
+      var cs = getComputedStyle(dot);
+      var w = parseFloat(cs.width);
+      var h = parseFloat(cs.height);
+      if(isFinite(w) && w>0 && isFinite(h) && h>0) return Math.max(w,h);
+    }catch(e){}
+    if(dot.style && dot.style.width){
+      var w2 = parseFloat(dot.style.width);
+      if(isFinite(w2) && w2>0) return w2;
+    }
+  }
+  return 12;
+}
+
+function _clearPartyMedian(inset){
+  inset = inset || _getInset();
+  if(!inset) return;
+  var el = inset.querySelector('.vr-party-median');
+  if(el) el.remove();
+}
+
+function _renderPartyMedian(inset, member){
+  _ensureInsetReady(function(insetReady){
+    inset = insetReady || inset || _getInset();
+    member = member || (window.__memberData || window.memberData);
+    if(!inset || !member){ console.warn('[party-median] missing inset/member'); return; }
+    var aln = member.alignment || {};
+    var d1 = parseFloat(aln.dim1_median_party);
+    var d2 = parseFloat(aln.dim2_median_party);
+    if(!isFinite(d1) || !isFinite(d2)){
+      console.warn('[party-median] invalid medians', d1, d2);
+      _clearPartyMedian(inset);
+      return;
+    }
+    if(d1 < -1) d1 = -1; if(d1 > 1) d1 = 1;
+    if(d2 < -1) d2 = -1; if(d2 > 1) d2 = 1;
+    var size = parseFloat((getComputedStyle(inset)||{}).width) || inset.offsetWidth || 180;
+    var dotSize = _getMainDotSize(), half = dotSize/2;
+    var x = ((d1 + 1) / 2) * size;
+    var y = ((1 - d2) / 2) * size;
+    x = Math.max(half, Math.min(size - half, x));
+    y = Math.max(half, Math.min(size - half, y));
+    var ep = _effectiveParty(member.identity||{});
+    var color = (ep==='R') ? 'rgb(200,0,0)' : 'rgb(0,90,220)';
+    var box = inset.querySelector('.vr-party-median');
+    if(!box){
+      box = document.createElement('div');
+      box.className = 'vr-party-median';
+      box.style.position='absolute';
+      box.style.pointerEvents='none';
+      box.style.borderRadius = '2px';
+      box.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.9)';
+      box.style.border = '1px solid rgba(0,0,0,0.6)';
+      try{ inset.insertBefore(box, inset.firstChild||null); }catch(e){ inset.appendChild(box); }
+    }
+    box.style.width = box.style.height = dotSize + 'px';
+    box.style.left = (x - half) + 'px';
+    box.style.top  = (y - half) + 'px';
+    box.style.background = color;
+    box.style.zIndex = '0';
+    box.style.display = '';
+    box.style.opacity = '1';
+    console.log('[party-median] rendered at', {d1:d1, d2:d2, x:x, y:y, color:color, size:size, dotSize:dotSize});
+  });
+}
+function _effectiveParty(identity){
+    var party = ((identity && identity.party) || '').trim().toUpperCase();
+    if(party.startsWith('R') || party==='200') return 'R';
+    if(party.startsWith('D') || party==='100') return 'D';
+    // treat others/Independents as D for color rule
+    return 'D';
+  }
+
+function _bindPartyMedianCheckbox(){
+  var cb = document.getElementById('show-party-median');
+  if(!cb || cb._pmBound) return;
+  cb._pmBound = true;
+  cb.addEventListener('change', function(){
+    _ensureInsetReady(function(inset){
+      if(!inset) return;
+      if(cb.checked){
+        console.log('[party-median] checkbox: checked -> render');
+        _renderPartyMedian(inset, (window.__memberData || window.memberData));
+      }else{
+        console.log('[party-median] checkbox: unchecked -> clear');
+        _clearPartyMedian(inset);
+      }
+    });
+  });
+  try{ _refreshPartyMedianCheckboxState(); }catch(e){}
+  if(cb.checked){
+    _ensureInsetReady(function(inset){
+      if(inset){ console.log('[party-median] init render'); _renderPartyMedian(inset, (window.__memberData || window.memberData)); }
+    });
+  }
+}
+
+function _hasPartyMedian(member){
+  member = member || _getMemberData();
+  var aln = (member && member.alignment) || {};
+  var d1 = parseFloat(aln.dim1_median_party);
+  var d2 = parseFloat(aln.dim2_median_party);
+  return isFinite(d1) && isFinite(d2);
+}
+
+function _refreshPartyMedianCheckboxState(){
+  var cb = document.getElementById('show-party-median');
+  if(!cb) return;
+  try{
+    var ok = _hasPartyMedian();
+    cb.disabled = !ok;
+    cb.title = ok ? '' : 'No party median data available for this member.';
+  }catch(e){}
+}
 function init(){
     ensureAdvancedCards();
     showAdvancedAndHideBasic();
@@ -812,3 +1031,111 @@ function init(){
 
   ready(init);
 })();
+
+try{
+  window._forcePartyMedianRender = function(){
+    console.log('[party-median] manual force render');
+    _renderPartyMedian(_getInset(), (window.__memberData || window.memberData));
+  };
+}catch(e){}
+try{ window._renderPartyMedian = _renderPartyMedian; }catch(e){}
+try{ window._bindPartyMedianCheckbox = _bindPartyMedianCheckbox; }catch(e){}
+try{
+  setTimeout(function(){
+    if (typeof window._bindPartyMedianCheckbox === 'function'){
+      window._bindPartyMedianCheckbox();
+    }
+  }, 0);
+}catch(e){}
+
+/* ===== Minimal global renderers (no internal deps) ===== */
+try{
+  window._clearPartyMedianMinimal = function(){
+    var inset = document.querySelector('#adv-card-voting .vr-inset');
+    if(!inset) return;
+    var el = inset.querySelector('.vr-party-median');
+    if(el) el.remove();
+  };
+
+  window._renderPartyMedianMinimal = function(){
+    var card = document.getElementById('adv-card-voting');
+    var inset = card ? card.querySelector('.vr-inset') : document.querySelector('.vr-inset');
+    var data = (window.__memberData || window.memberData);
+    if(!inset || !data || !data.alignment){ console.warn('[party-median:min] missing inset or data'); return; }
+    var d1 = parseFloat(data.alignment.dim1_median_party);
+    var d2 = parseFloat(data.alignment.dim2_median_party);
+    if(!isFinite(d1) || !isFinite(d2)){ console.warn('[party-median:min] invalid medians', d1, d2); return; }
+
+    // clamp
+    if(d1 < -1) d1 = -1; if(d1 > 1) d1 = 1;
+    if(d2 < -1) d2 = -1; if(d2 > 1) d2 = 1;
+
+    // inset size
+    var cs = getComputedStyle(inset) || {};
+    var size = parseFloat(cs.width) || inset.offsetWidth || 180;
+
+    // main dot size
+    var mainDot = inset.querySelector('.vr-dot');
+    var dotSize = 12;
+    if(mainDot){
+      var mcs = getComputedStyle(mainDot);
+      var mw = parseFloat(mcs.width), mh = parseFloat(mcs.height);
+      if(isFinite(mw) && mw>0 && isFinite(mh) && mh>0) dotSize = Math.max(mw, mh);
+    }
+    var half = dotSize/2;
+
+    // map dims -> px
+    var x = ((d1 + 1) / 2) * size;
+    var y = ((1 - d2) / 2) * size;
+    x = Math.max(half, Math.min(size - half, x));
+    y = Math.max(half, Math.min(size - half, y));
+
+    // color by party
+    var party = (((data.identity||{}).party)||'').toUpperCase();
+    var isR = party.startsWith('R') || party === '200';
+    var color = isR ? 'rgb(200,0,0)' : 'rgb(0,90,220)';
+
+    // create/update element, insert as firstChild (behind others)
+    var box = inset.querySelector('.vr-party-median');
+    if(!box){
+      box = document.createElement('div');
+      box.className = 'vr-party-median';
+      box.style.position = 'absolute';
+      box.style.pointerEvents = 'none';
+      box.style.borderRadius = '2px';
+      box.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.9)';
+      box.style.border = '1px solid rgba(0,0,0,0.6)';
+      try{ inset.insertBefore(box, inset.firstChild||null); }catch(e){ inset.appendChild(box); }
+    }
+    box.style.width = box.style.height = dotSize + 'px';
+    box.style.left = (x - half) + 'px';
+    box.style.top  = (y - half) + 'px';
+    box.style.background = color;
+    box.style.zIndex = '0';
+    box.style.display = '';
+    box.style.opacity = '1';
+    // Done
+    return box;
+  };
+
+  // A single public hook for you to call
+  window._forcePartyMedianRender = function(){
+    return window._renderPartyMedianMinimal();
+  };
+
+  // Also rewire checkbox (if present) to use the minimal renderer to avoid internal deps
+  (function(){
+    var cb = document.getElementById('show-party-median');
+    if(!cb || cb._pmMinBound) return;
+    cb._pmMinBound = true;
+    cb.addEventListener('change', function(){
+      if(cb.checked){
+        window._renderPartyMedianMinimal();
+      }else{
+        window._clearPartyMedianMinimal();
+      }
+    });
+    // if already checked, render immediately
+    if(cb.checked){ window._renderPartyMedianMinimal(); }
+  })();
+}catch(e){}
