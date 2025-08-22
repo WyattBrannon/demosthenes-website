@@ -1126,6 +1126,96 @@ dialBipart.appendChild(sub2b);
           var kvHeader = null;
           for (var j=0;j<headers.length;j++){ var t=(headers[j].textContent||'').trim(); if (t === 'Recent Major Votes'){ kvHeader = headers[j]; break; } }
           if (!kvHeader) return;
+          // --- Inject tabs: Major / Maverick / Missed (native tabs, full-width, blue active) ---
+          (function(){
+            if (!kvHeader.querySelector('.mv-tabs-wrap')){
+              var wrap = document.createElement('div'); wrap.className = 'mv-tabs-wrap';
+              var tabs = document.createElement('div'); tabs.className = 'mv-tabs'; wrap.appendChild(tabs);
+              function mk(label){ var b=document.createElement('button'); b.type='button'; b.className='btn tab'; b.textContent=label; return b; }
+              var tMajor = mk('Major Votes');
+              var tMav   = mk('Maverick Votes');
+              var tMiss  = mk('Missed Votes');
+              tMajor.className = 'btn tab active';
+              tabs.appendChild(tMajor); tabs.appendChild(tMav); tabs.appendChild(tMiss);
+              kvHeader.textContent=''; kvHeader.appendChild(wrap);
+
+              // Scoped style: spacing, 3-col grid, and blue active
+              if (!document.getElementById('mv-tabs-style')){
+                var st=document.createElement('style'); st.id='mv-tabs-style';
+                st.textContent=[
+                  '.section-title .mv-tabs-wrap{ width:100%; margin:10px 0 12px 0; }',
+                  '.section-title .mv-tabs{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:100%; }',
+                  '.section-title .mv-tabs .btn.tab{ width:100%; }',
+                  '.section-title .mv-tabs .btn.tab.active{ background:var(--primary, #0B5FFF); color:#fff; border-color:var(--primary, #0B5FFF); }'
+                ].join('\n');
+                document.head.appendChild(st);
+              }
+
+              function setActive(btn){ [tMajor,tMav,tMiss].forEach(function(b){ b.className='btn tab'; }); btn.className='btn tab active'; }
+
+              function buildItems(list, root, type){
+  // Build list rows to match Key/Major votes layout, with empty state.
+  var frag = document.createDocumentFragment();
+  var t = type || (kvHeader.__mvTabs && kvHeader.__mvTabs.current) || 'major';
+  var label = (t==='maverick') ? 'maverick' : (t==='missed' ? 'missed' : 'major');
+  if (!Array.isArray(list) || !list.length){
+    var empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.padding = '8px 0';
+    empty.textContent = 'No ' + label + ' votes available.';
+    root.innerHTML = '';
+    root.appendChild(empty);
+    return frag;
+  }
+  var kv = list.slice();
+  var expanded = !!root.__expanded;
+  var src = expanded ? kv : kv.slice(0, Math.min(3, kv.length));
+  root.innerHTML = '';
+  src.forEach(function(v){
+    var row = document.createElement('div'); row.className = 'stack';
+    row.style.borderTop = '1px solid var(--border)'; row.style.paddingTop = '8px';
+    var q = (v && (v.title || v.question || (v.bill && v.bill.title))) || '';
+    var date = (v && (v.date || v.voted_at || v.roll_date)) || '';
+    var head = document.createElement('div');
+    var strong = document.createElement('strong'); strong.textContent = q; head.appendChild(strong);
+    if (date){
+      head.appendChild(document.createTextNode(' • '));
+      var span = document.createElement('span'); span.className = 'muted';
+      try { span.textContent = new Date(date).toLocaleDateString(); } catch(e) { span.textContent = String(date); }
+      head.appendChild(span);
+    }
+    row.appendChild(head);
+    var desc = (v && (v.vote_desc || v.dtl_desc || v.vote_question)) || '';
+    if (desc){
+      var dline = document.createElement('div'); dline.className = 'muted'; dline.textContent = String(desc);
+      row.appendChild(dline);
+    }
+    var how = (v && (v.member_position || v.position || v.vote || v.member_vote || v.choice)) || '';
+    var meta = document.createElement('div'); meta.className = 'muted'; meta.textContent = (how ? ('Position: ' + how) : '');
+    row.appendChild(meta);
+    root.appendChild(row);
+  });
+  if (list.length > 3){
+    var ctr = document.createElement('div'); ctr.style.paddingTop = '8px';
+    var btn = document.createElement('button'); btn.className = 'btn';
+    btn.textContent = root.__expanded ? 'Show less' : 'Show more';
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
+      root.__expanded = !root.__expanded;
+      var T = kvHeader.__mvTabs;
+      if (T && typeof T.render === 'function'){ T.render(T.current, {keep:true}); }
+    });
+    ctr.appendChild(btn); root.appendChild(ctr);
+  }
+  return frag;
+}
+
+              
+              var currentTab = 'major';
+              kvHeader.__mvTabs = {setActive:setActive, tMajor:tMajor, tMav:tMav, tMiss:tMiss, buildItems:buildItems, get current(){return currentTab;}, set current(v){currentTab=v;}};
+            }
+          })();
+
 
           var root = kvHeader.nextElementSibling;
           var needNew = !(root && root.classList && root.classList.contains('stack') && root.id === 'recentMajorVotes');
@@ -1137,6 +1227,46 @@ dialBipart.appendChild(sub2b);
           } else {
             root.innerHTML = '';
           }
+
+          // Tab behaviors
+          (function(){
+            var T = kvHeader.__mvTabs; if (!T) return;
+            var tabsNode = kvHeader.querySelector('.mv-tabs');
+            if (tabsNode && !tabsNode.__wired){
+              function getData(){
+                var d=(typeof results!=='undefined' && results && results[0] && results[0].data) ? results[0].data : (window.__memberData||window.memberData)||{};
+                return d;
+              }
+              function listFor(type){
+                var d=getData();
+                if(type==='maverick') return d.maverick_votes || d.maverickVotes || [];
+                if(type==='missed')   return d.missed_votes || d.missedVotes || [];
+                return d.key_votes || d.keyVotes || d.recent_major_votes || [];
+              }
+              function render(type, opts){
+                var root = kvHeader.nextElementSibling;
+                if (!root) return;
+                if (type==='major'){
+                  var listMajor = listFor('major');
+                  T.setActive(T.tMajor); T.current='major';
+                  if(!(opts && opts.keep)) root.__expanded=false;
+                  if (!listMajor || !listMajor.length){
+                    root.innerHTML=''; T.buildItems(listMajor || [], root, 'major'); return;
+                  }
+                  try { renderKeyVotes(); return; } catch(e){ /* fallthrough */ }
+                }
+                T.setActive(type==='maverick'?T.tMav:T.tMiss); T.current=type;
+                if(!(opts && opts.keep)) root.__expanded=false;
+                root.innerHTML = '';
+                T.buildItems(listFor(type), root, type);
+              }
+              T.render = render;
+              T.tMajor.addEventListener('click', function(){ render('major'); });
+              T.tMav.addEventListener('click', function(){ render('maverick'); });
+              T.tMiss.addEventListener('click', function(){ render('missed'); });
+              tabsNode.__wired = true;
+            }
+          })();
 
           var data = (typeof results !== 'undefined' && results[0]) ? results[0] : (typeof window !== 'undefined' && window.__memberData) ? window.__memberData : {};
           var kv = data && (data.key_votes || data.keyVotes || data.votes_key || data.highlight_votes) || [];
@@ -1213,4 +1343,101 @@ renderKeyVotes();
     }).catch(function(e){ if(e) setErr('Runtime error: '+(e.message||e)); });
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded', main);} else {main();}
+})();
+
+;(() => {
+  function getData(){
+    var d = (typeof results!=='undefined' && results && results[0] && results[0].data)
+      ? results[0].data : (window.__memberData || window.memberData) || {};
+    return d || {};
+  }
+  function readPhone(d){
+    if (d && d.contact && d.contact.phone) return String(d.contact.phone);
+    if (d && d.identity && d.identity.contact && d.identity.contact.phone) return String(d.identity.contact.phone);
+    return '';
+  }
+  function upsert(){
+    var wrap = document.getElementById('district-contact-btns');
+    if (!wrap) return false; // buttons not ready yet
+    var phone = readPhone(getData());
+    if (!phone) return false; // data not ready yet
+    var el = document.getElementById('office-phone-line');
+    if (!el){
+      el = document.createElement('div');
+      el.id = 'office-phone-line';
+      el.style.marginTop = '8px';
+      wrap.appendChild(el);
+    }
+    el.innerHTML = '';
+    var b = document.createElement('strong'); b.textContent = 'Office Phone:';
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' ' + phone));
+    el.style.display = '';
+    return true;
+  }
+  function start(){
+    if (upsert()) return;
+    var tries = 0;
+    (function tick(){
+      if (upsert()) return;
+      if (++tries > 120) return; // ~12s max
+      setTimeout(tick, 100);
+    })();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+
+;(() => {
+  function getData(){
+    var d = (typeof results!=='undefined' && results && results[0] && results[0].data)
+      ? results[0].data : (window.__memberData || window.memberData) || {};
+    return d || {};
+  }
+  function readPhone(d){
+    if (d && d.contact && d.contact.phone) return String(d.contact.phone);
+    if (d && d.identity && d.identity.contact && d.identity.contact.phone) return String(d.identity.contact.phone);
+    return '';
+  }
+  function place(){
+    var wrap = document.getElementById('district-contact-btns');
+    if (!wrap) return false; // buttons not ready yet
+    var phone = readPhone(getData());
+    if (!phone) return false; // data not ready yet
+
+    var parent = wrap.parentNode;
+    if (!parent) return false;
+
+    var el = document.getElementById('office-phone-line');
+    if (!el){
+      el = document.createElement('div');
+      el.id = 'office-phone-line';
+      el.style.marginTop = '8px';     // small space below buttons
+      el.style.display = 'block';     // ensure it's on its own line
+    }
+
+    // Ensure the phone line is the *immediate next sibling* after the buttons wrapper
+    if (el.parentNode !== parent || el.previousElementSibling !== wrap){
+      try { parent.insertBefore(el, wrap.nextSibling); } catch (e) { parent.appendChild(el); }
+    }
+
+    // Populate content
+    el.innerHTML = '';
+    var b = document.createElement('strong'); b.textContent = 'Office Phone:';
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' ' + phone));
+
+    return true;
+  }
+  function start(){
+    if (place()) return;
+    var tries = 0;
+    (function tick(){
+      if (place()) return;
+      if (++tries > 120) return; // ~12s max
+      setTimeout(tick, 100);
+    })();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
