@@ -2,6 +2,42 @@
 (function(){
   "use strict";
 
+// --- tiny helper for "Show more / Show less" on a comma-separated line ---
+function _wireShowToggle(opts){
+  var root = opts.root;
+  var namesEl = opts.namesEl;
+  var items = (opts.items||[]).slice();
+  var limitClosed = opts.limitClosed || 3;
+  var limitOpen   = opts.limitOpen   || 10;
+  var mutedClass  = opts.mutedClass  || 'muted';
+  if(!root || !namesEl) return;
+  var toggle = root.querySelector('.show-toggle');
+  if(!toggle){
+    toggle = document.createElement('span');
+    toggle.className = 'show-toggle ' + mutedClass;
+    toggle.style.cursor = 'pointer';
+    toggle.style.marginLeft = '0.5ch';
+    toggle.textContent = 'Show more';
+    root.appendChild(document.createTextNode(' '));
+    root.appendChild(toggle);
+  }
+  function render(open){
+    var slice = items.slice(0, open ? limitOpen : limitClosed);
+    namesEl.textContent = (slice.length ? slice.join(', ') : '—');
+    toggle.textContent = open ? 'Show less' : 'Show more';
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.style.display = (items.length > limitClosed) ? '' : 'none';
+  }
+  render(false);
+  if(!toggle._bound){
+    toggle._bound = true;
+    toggle.addEventListener('click', function(){
+      var open = toggle.getAttribute('aria-expanded') !== 'true';
+      render(open);
+    });
+  }
+}
+
   // --- small utilities ---
   function ready(fn){ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } }
   function byId(id){ return document.getElementById(id); }
@@ -1086,45 +1122,53 @@ function _refreshPartyMedianCheckboxState(){
   }catch(e){}
 }
 function _updateSimilarLine(member){
-  try{
-    var card = document.getElementById('adv-card-voting');
-    if(!card) return;
-    var line = card.querySelector('.vr-similar');
-    if(!line){
-      line = document.createElement('div');
-      line.className = 'vr-similar';
-      var label = document.createElement('span');
-      label.className = 'vr-similar-label';
-      label.style.fontWeight = '700';
-      label.textContent = 'Ideologically Similar: ';
-      var names = document.createElement('span');
-      names.className = 'vr-similar-names';
-      names.textContent = '—';
-      line.appendChild(label); line.appendChild(names);
-      card.appendChild(line);
+  var card = document.getElementById('adv-card-voting');
+  if(!card) return;
+  var line = card.querySelector('.vr-similar');
+  if(!line){
+    line = document.createElement('div');
+    line.className = 'vr-similar';
+    var label = document.createElement('span');
+    label.className = 'vr-similar-label';
+    label.style.fontWeight = '700';
+    label.textContent = 'Similar ideologies: ';
+    var names = document.createElement('span');
+    names.className = 'vr-similar-names';
+    names.textContent = '—';
+    line.appendChild(label); line.appendChild(names);
+    card.appendChild(line);
+  }
+  var namesEl = line.querySelector('.vr-similar-names');
+  var m = member || (window.__memberData || window.memberData) || {};
+  var list = Array.isArray(m.ideologically_similar) ? m.ideologically_similar :
+             (Array.isArray((m.alignment||{}).ideologically_similar) ? (m.alignment||{}).ideologically_similar : []);
+  function fmt3(x){ var n = Number(x); return (isFinite(n) ? n.toFixed(3) : null); }
+  var full = [];
+  for(var i=0;i<list.length;i++){
+    var it = list[i];
+    if(!it) continue;
+    if(typeof it === 'string'){
+      full.push(it);
+    } else {
+      var nm = (typeof it.name === 'string') ? it.name : String(it.name||'');
+      var d = fmt3(it.distance);
+      full.push(d ? (nm + ' (' + d + ')') : nm);
     }
-    var namesEl = line.querySelector('.vr-similar-names');
-    var m = member || (window.__memberData || window.memberData) || {};
-    var list = Array.isArray(m.ideologically_similar) ? m.ideologically_similar :
-               (Array.isArray((m.alignment||{}).ideologically_similar) ? (m.alignment||{}).ideologically_similar : []);
-    function fmt3(x){ var n = Number(x); return (isFinite(n) ? n.toFixed(3) : null); }
-    var out = [];
-    for(var i=0;i<list.length && out.length<3;i++){
-      var it = list[i];
-      if(!it) continue;
-      if(typeof it === 'string'){
-        out.push(it);
-      } else {
-        var nm = (typeof it.name === 'string') ? it.name : String(it.name||'');
-        var d = fmt3(it.distance);
-        out.push(d ? (nm + ' (' + d + ')') : nm);
-      }
-    }
-    namesEl.textContent = out.length ? out.join(', ') : '—';
-  }catch(e){}
+  }
+  if (typeof _wireShowToggle === 'function'){
+    _wireShowToggle({
+      root: line,
+      namesEl: namesEl,
+      items: full,
+      limitClosed: 3,
+      limitOpen: 10,
+      mutedClass: 'muted'
+    });
+  } else {
+    namesEl.textContent = full.slice(0,3).join(', ');
+  }
 }
-
-  // --- Voting Record tabs styles (injected once) ---
+    // --- Voting Record tabs styles (injected once) ---
   // --- Ensure Voting Record tabs exist below 'Ideologically Similar' line ---
 // --- Voting Record tabs styles (full-width, blue active) ---
 (function injectVRTabStylesFix(){
@@ -1310,25 +1354,27 @@ var oppPartyLabel = isR ? 'Democratic' : 'Republican';
     // ---- Similar voting records line (placed under party unity inset) ----
     (function(){
       try{
-        var data = (window.__memberData || window.memberData) || {};
+        var data = (window.__memberData || window.memberData) || {}
         var sims = (data && (data.vote_record_similar || ((data.alignment||{}).vote_record_similar))) || [];
         if(!Array.isArray(sims)) sims = [];
-        var top = sims.slice(0, 3).filter(function(x){ return x && (x.name || x.member_name || x.full_name); });
+
+        // Build FULL formatted list
+        var partsAll = sims
+          .filter(function(x){ return x && (x.name || x.member_name || x.full_name); })
+          .map(function(x){
+            var nm = x.name || x.member_name || x.full_name || x.Member || 'Unknown';
+            var d = (x.distance != null ? x.distance : (x.dist != null ? x.dist : x.score));
+            if(typeof d === 'number' && isFinite(d)){ d = (Math.round(d * 1000) / 1000).toString(); }
+            return nm + ' (' + (d != null ? d : '—') + ')';
+          });
+
         // Create/update line element
         var lineId = 'vr-vote-similar';
         var lineEl = document.getElementById(lineId);
-        if(!top.length){
+        if(!partsAll.length){
           if(lineEl && lineEl.parentNode){ lineEl.parentNode.removeChild(lineEl); }
           return;
         }
-        // Format the list: Name (Distance)
-        var parts = top.map(function(x){
-          var nm = x.name || x.member_name || x.full_name || x.Member || 'Unknown';
-          var d = (x.distance != null ? x.distance : (x.dist != null ? x.dist : x.score));
-          if(typeof d === 'number' && isFinite(d)){ d = (Math.round(d * 1000) / 1000).toString(); }
-          return nm + ' (' + (d != null ? d : '—') + ')';
-        });
-
         if(!lineEl){
           lineEl = document.createElement('div');
           lineEl.id = lineId;
@@ -1342,11 +1388,9 @@ var oppPartyLabel = isR ? 'Democratic' : 'Republican';
         label.textContent = 'Similar voting records: ';
         var value = document.createElement('span');
         value.className = 'vr-similar-names';
-        value.textContent = parts.join(', ');
         lineEl.appendChild(label);
         lineEl.appendChild(value);
 
-        // Insert directly **under** the unity inset row
         var row = document.getElementById('vr-unity-row');
         if(row && row.parentNode){
           if(row.nextSibling){
@@ -1355,6 +1399,15 @@ var oppPartyLabel = isR ? 'Democratic' : 'Republican';
             row.parentNode.appendChild(lineEl);
           }
         }
+
+        _wireShowToggle({
+          root: lineEl,
+          namesEl: value,
+          items: partsAll,
+          limitClosed: 3,
+          limitOpen: 10,
+          mutedClass: 'muted'
+        });
       }catch(_e){}
     })();
     // ---- end Similar voting records line ----
