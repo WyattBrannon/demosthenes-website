@@ -1871,7 +1871,7 @@ function ensureAdvancedVoteTabs(){
         }
         row.appendChild(head);
 
-        var descText = (v && (v.vote_desc || v.dtl_desc || v.description || v.summary)) || '';
+        var descText = (v && (v.vote_desc || v.dtl_desc || v.description || v.summary || v.question)) || '';
         if(descText){
           var desc = document.createElement('div');
           desc.className = 'muted';
