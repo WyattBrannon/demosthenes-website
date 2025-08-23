@@ -141,15 +141,28 @@
     var memberURL = DB + '/members/' + bioguide + '.json';
     var yamlURL = DB + '/legislators-current.yaml';
     var header = byId('headerCard');
-    if(!bioguide){ if(header) header.textContent='Missing ?bioguide=...'; return; }
-    if(header) header.textContent='Fetching member JSON & YAML...';
+    if(!bioguide){ if(header) header.textContent='Missing ?bioguide='; return; }
+    if(header) header.textContent='Fetching member JSON & YAML';
 
     Promise.all([
       fetch(memberURL,{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' for '+memberURL); return r.json(); }),
       fetch(yamlURL,{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' for '+yamlURL); return r.text(); })
     ]).then(function(results){
       ensureAdvancedCards(); ensureVotingRecordInset();
-      var data = results[0] || {}, yamlText = results[1] || '';
+      
+    
+    
+    
+    
+    
+    try{ ensureAdvancedVoteTabs(); }catch(e){}
+  try{ ensurePartyUnityInset(); }catch(e){}
+try{ ensureAdvancedVoteTabs(); }catch(e){}
+try{ ensureAdvancedVoteTabs(); }catch(e){}
+try{ ensureAdvancedVoteTabs(); }catch(e){}
+try{ ensureAdvancedVoteTabs(); }catch(e){}
+try{ ensureAdvancedVoteTabs(); }catch(e){}
+var data = results[0] || {}, yamlText = results[1] || '';
       var id = data.identity || {};
       var block = findBlockForBioguide(yamlText, bioguide);
       var displayName = extractNameFromBlock(block) || (id.name || '(Name unavailable)');
@@ -169,6 +182,7 @@
       img.onerror=function(){ var fb=document.createElement('div'); fb.className='muted'; fb.textContent='Portrait unavailable.'; if(img.parentNode) img.parentNode.replaceChild(fb, img); };
 
       var chamber = (function(){ var t=latestTermTypeFromBlock(block) || (id.chamber || ''); if(t==='sen') return 'senate'; if(t==='rep') return 'house'; return t; })();
+;
       var state=id.state||''; var district=id.district||null;
       var seat=document.createElement('div'); seat.className='muted';
       seat.textContent=(chamber==='senate'?'Senator':'Representative')+' '+seatText(chamber,state,district);
@@ -200,7 +214,7 @@
       right.appendChild(nameLine); right.appendChild(seat); right.appendChild(tenure); right.appendChild(commWrap);
       row.appendChild(img); row.appendChild(right);
       header.appendChild(row);
-      try{ window.__memberData = data; _updateCurrentIdeologyLine(data);   updateVotingInsetWithNominate(data);
+      try{ window.__memberData = data; _updateCurrentIdeologyLine(data);   updateVotingInsetWithNominate(data); try{ ensurePartyUnityInset(); }catch(e){} try{ ensurePartyUnityInset(); }catch(e){}
       try{ _updateSimilarLine(data); }catch(e){}
       }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
     }).catch(function(err){
@@ -406,6 +420,7 @@ try{
     clearHistoricalNominate(_getInset());
   }
 })();
+;
 }
 }catch(e){}
 
@@ -1109,15 +1124,856 @@ function _updateSimilarLine(member){
   }catch(e){}
 }
 
+  // --- Voting Record tabs styles (injected once) ---
+  // --- Ensure Voting Record tabs exist below 'Ideologically Similar' line ---
+// --- Voting Record tabs styles (full-width, blue active) ---
+(function injectVRTabStylesFix(){
+  if(document.getElementById('adv-vr-tabs-style-3')) return;
+  var st = document.createElement('style');
+  st.id = 'adv-vr-tabs-style-3';
+  st.textContent = '#adv-card-voting .mv-tabs-wrap{ width:100%; max-width:100%; display:block; margin:12px 0; }' + '\n'.repeat(1) + '#adv-card-voting .mv-tabs{ display:grid; width:100%; gap:8px; }' + '\n'.repeat(1) + '#adv-card-voting #vr-time-tabs.mv-tabs{ grid-template-columns: repeat(2, minmax(0,1fr)); }' + '\n'.repeat(1) + '#adv-card-voting #vr-type-tabs.mv-tabs{ grid-template-columns: repeat(3, minmax(0,1fr)); }' + '\n'.repeat(1) + '#adv-card-voting .mv-tabs .btn.tab{ width:100%; box-sizing:border-box; display:block; }' + '\n'.repeat(1) + '#adv-card-voting .mv-tabs .btn.tab.active{ background:var(--primary, #0B5FFF); color:#fff; border-color:var(--primary, #0B5FFF); }' + '\n'.repeat(1) + '#adv-card-voting .mv-tabs-wrap, #adv-card-voting #vr-tab-content{ overflow-anchor: none; }';
+  document.head.appendChild(st);
+})();
+;
+function ensurePartyUnityInset(){
+  try{
+    var card = document.getElementById('adv-card-voting');
+    if(!card) return;
+    // We want this between the time tabs and the type tabs
+    var timeWrap = document.getElementById('vr-time-tabs-wrap');
+    var typeWrap = document.getElementById('vr-type-tabs-wrap');
+    try{
+      var tt = document.getElementById('vr-time-tabs');
+      if(tt && !tt.__unityHooked){
+        tt.addEventListener('click', function(ev){
+          var t = ev.target;
+          if(t && t.classList && t.classList.contains('tab')){
+            setTimeout(function(){ try{ ensurePartyUnityInset(); }catch(e){} }, 0);
+          }
+        }, true);
+        tt.__unityHooked = true;
+      }
+    }catch(_e){}
+
+    if(!timeWrap) return; // Needs time tabs rendered
+
+    // Reuse CSS from ideology inset (adv-vr-style) injected by ensureVotingRecordInset()
+    // Build/update the inset wrapper
+    var unity = document.getElementById('vr-unity-inset-wrap');
+    if(!unity){
+      unity = document.createElement('div');
+      unity.id = 'vr-unity-inset-wrap';
+      unity.className = 'vr-inset-wrap';
+      // Ensure absolute children (inset, axes) are positioned relative to the wrap
+      unity.style.position = 'relative';
+
+      // Insert right after timeWrap, before typeWrap
+      if(timeWrap.parentNode){
+        if(typeWrap && typeWrap.parentNode === timeWrap.parentNode){
+          timeWrap.parentNode.insertBefore(unity, typeWrap);
+        }else{
+          timeWrap.parentNode.insertBefore(unity, timeWrap.nextSibling);
+        }
+      }else{
+        card.appendChild(unity);
+      }
+    }else{
+      // Ensure it's in the right spot (between time and type)
+      if(typeWrap && unity.nextSibling !== typeWrap){
+        try{ unity.parentNode.insertBefore(unity, typeWrap); }catch(_e){}
+      }
+    }
+
+    // Clear contents for idempotent render
+    unity.innerHTML = '';
+
+    // Axis labels depend on member's party
+    function getData(){ return (window.__memberData || window.memberData) || {}; }
+    var d = getData();
+    var partyRaw = (((d.identity||{}).party) || d.party || d.Party || '').toString().trim().toUpperCase();
+// Consider both string and numeric codes (200 = Republican, 100 = Democratic). Independents align with D for label flipping.
+var isR = (partyRaw.startsWith('R') || partyRaw === '200');
+var myPartyLabel = isR ? 'Republican' : 'Democratic';
+var oppPartyLabel = isR ? 'Democratic' : 'Republican';
+
+    // Create inset square
+    var inset = document.createElement('div');
+    inset.className = 'vr-inset';
+    
+      // --- Party Unity marker (black square) ---
+      (function(){
+        var data = (window.__memberData || window.memberData) || {};
+        var A = (data && data.alignment) || {};
+        // Determine active scope
+        var tabs = document.getElementById('vr-time-tabs');
+        var active = tabs && tabs.querySelector('.tab.active');
+        var scope = (active && (active.getAttribute('data-scope') || (active.dataset && active.dataset.scope))) || 'current';
+
+        // Compute ux, uy in [0,1]
+        var ux = 0, uy = 0;
+        if(scope === 'all'){
+          var totalAll = Number(A.total_votes_all);
+          var mAll = Number(A.maverick_votes_all);
+          var bpAll = Number(A.bipartisan_votes_all);
+          var xAll = (isFinite(totalAll) && totalAll > 0 && isFinite(mAll)) ? (1 - (mAll/totalAll)) : null;
+          var yAll = (isFinite(totalAll) && totalAll > 0 && isFinite(bpAll)) ? (bpAll/totalAll) : null;
+          if(xAll != null && yAll != null){
+            ux = xAll;
+            uy = yAll;
+          }else{
+            // fall back to current if all-time data missing
+            var uxRawF = (data.party_unity_pct != null) ? data.party_unity_pct : A.party_unity_pct;
+            var uyRawF = (data.party_unity_bp_pct != null) ? data.party_unity_bp_pct : A.party_unity_bp_pct;
+            ux = Number(uxRawF); uy = Number(uyRawF);
+          }
+        } else {
+          var uxRaw = (data.party_unity_pct != null) ? data.party_unity_pct : A.party_unity_pct;
+          var uyRaw = (data.party_unity_bp_pct != null) ? data.party_unity_bp_pct : A.party_unity_bp_pct;
+          ux = Number(uxRaw); uy = Number(uyRaw);
+        }
+
+        // Clamp
+        ux = (isFinite(ux) ? Math.max(0, Math.min(1, ux)) : 0);
+        uy = (isFinite(uy) ? Math.max(0, Math.min(1, uy)) : 0);
+
+        // Position within 180x180 inset, invert y for CSS top
+        var size = 180, dotSize = 12, half = dotSize/2;
+        var px = Math.max(half, Math.min(size - half, ux * size));
+        var py = Math.max(half, Math.min(size - half, (1 - uy) * size));
+
+        var uDot = inset.querySelector('.vr-unity-dot');
+        if(!uDot){
+          uDot = document.createElement('div');
+          uDot.className = 'vr-unity-dot';
+          uDot.style.position = 'absolute';
+          uDot.style.width = uDot.style.height = dotSize + 'px';
+          uDot.style.background = '#000';
+          uDot.style.borderRadius = '2px';
+          uDot.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.85)';
+          uDot.style.border = '1px solid #000';
+          uDot.style.zIndex = '2';
+          uDot.style.pointerEvents = 'none';
+          inset.appendChild(uDot);
+        }
+        uDot.style.left = (px - half) + 'px';
+        uDot.style.top  = (py - half) + 'px';
+      })();
+      // --- end Party Unity marker ---
+// --- end Party Unity marker ---
+
+    inset.setAttribute('aria-hidden','true');
+    inset.style.width='180px';
+    inset.style.height='180px';
+    inset.style.borderRadius='12px';
+    inset.style.flex='0 0 180px';
+    inset.style.border='1px solid rgba(0,0,0,0.08)';
+    inset.style.boxShadow='inset 0 0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.08)';
+    inset.style.position = 'absolute';
+    inset.style.left = '24px';
+    inset.style.top = '0';
+    inset.style.backgroundColor = '#fff';
+        var gradH, gradV;
+        if(isR){
+          // GOP (flipped): blue (right->left), red (top->bottom)
+          gradH = 'linear-gradient(to left, rgba(220,53,69,0.50), rgba(255,255,255,0) 70%)';
+          gradV = 'linear-gradient(to bottom, rgba(13,110,253,0.50), rgba(255,255,255,0) 70%)';
+        } else {
+          // DEM/IND (flipped): red (right->left), blue (top->bottom)
+          gradH = 'linear-gradient(to left, rgba(13,110,253,0.50), rgba(255,255,255,0) 70%)';
+          gradV = 'linear-gradient(to bottom, rgba(220,53,69,0.50), rgba(255,255,255,0) 70%)';
+        }
+        inset.style.backgroundImage = gradH + ',' + gradV;
+        inset.style.backgroundBlendMode = 'normal';
+        inset.style.backgroundSize = '100% 100%';
+
+    // Axes (copy style from ideology inset)
+    var axisY = document.createElement('div');
+    axisY.className = 'vr-axis-y muted';
+    axisY.textContent = '- ' + oppPartyLabel + ' +';
+
+    var axisX = document.createElement('div');
+    axisX.className = 'vr-axis-x muted';
+    axisX.textContent = '- ' + myPartyLabel + ' +';
+
+    // Append
+    unity.appendChild(axisY);
+        // shift vertical label 8px further left from its computed position
+        try{
+          var cs = window.getComputedStyle(axisY);
+          var curr = parseFloat(cs.left) || 0;
+          axisY.style.left = (curr - 18) + 'px';
+        }catch(_e){}
+        /* SHIFT_AXISY_LEFT_8PX */
+    unity.appendChild(inset);
+    unity.appendChild(axisX);
+    
+    
+    
+    // ---- Right-side "Votes with {party}: X% of the time" line ----
+    (function(){
+      try{
+        var data = (window.__memberData || window.memberData) || {};
+        var partyRaw = ((((data.identity||{}).party) || data.party || data.Party) || '').toString().trim().toUpperCase();
+        var isR = (partyRaw.startsWith('R') || partyRaw === '200');
+        var myParty = (isR ? 'Republicans' : 'Democrats');
+        var oppParty = (isR ? 'Democrats' : 'Republicans');
+
+        // primary party_unity_pct
+        var raw1 = (data.alignment && data.alignment.party_unity_pct);
+        var val1 = Number(raw1);
+        if(val1 <= 1 && val1 >= 0) val1 *= 100;
+        var valStr1 = (isFinite(val1) ? (Math.round(val1 * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%' : '—');
+
+        // secondary bp_pct (opposite party)
+        var raw2 = (data.alignment && data.alignment.party_unity_bp_pct);
+        var val2 = Number(raw2);
+        if(val2 <= 1 && val2 >= 0) val2 *= 100;
+        var valStr2 = (isFinite(val2) ? (Math.round(val2 * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%' : '—');
+        // --- Override values when "All Time" tab is active ---
+        (function(){
+          try{
+            var scopeBtn = document.querySelector('#vr-time-tabs .tab.active');
+            var scope = scopeBtn && ((scopeBtn.getAttribute('data-scope')) || (scopeBtn.dataset && scopeBtn.dataset.scope)) || 'current';
+            if(scope === 'all'){
+              var aAll = (data && data.alignment) || {};
+              function pctFmt(v){
+                return (v == null) ? '—' : (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, '') + '%';
+              }
+              function safePct(num, den){
+                var n = Number(num), d = Number(den);
+                if(!(isFinite(n) && isFinite(d) && d > 0)) return null;
+                return (n / d) * 100;
+              }
+              // Line 1: X = 1 - (maverick_votes_all / total_votes_all)
+              (function(){
+                var n = Number(aAll.maverick_votes_all), d = Number(aAll.total_votes_all);
+                var v = (isFinite(n) && isFinite(d) && d > 0) ? (1 - (n/d)) * 100 : null;
+                valStr1 = pctFmt(v);
+              })();
+              // Line 2: X = (bipartisan_votes_all / total_votes_all)
+              (function(){
+                var v = safePct(aAll.bipartisan_votes_all, aAll.total_votes_all);
+                valStr2 = pctFmt(v);
+              })();
+              // For lines 3-5 we override their value strings after they are computed
+              window.__vrUnityAllScope = true;
+            }else{
+              window.__vrUnityAllScope = false;
+            }
+          }catch(_e){ window.__vrUnityAllScope = false; }
+        })();
+
+
+        // Ensure row and copy containers
+        var row = document.getElementById('vr-unity-row');
+        if(!row){
+          row = document.createElement('div');
+          row.id = 'vr-unity-row';
+          row.className = 'vr-row';
+          if(timeWrap && timeWrap.parentNode){
+            if(typeWrap && typeWrap.parentNode === timeWrap.parentNode){
+              timeWrap.parentNode.insertBefore(row, typeWrap);
+            }else{
+              timeWrap.parentNode.insertBefore(row, timeWrap.nextSibling);
+            }
+          }else if(unity && unity.parentNode){
+            unity.parentNode.insertBefore(row, unity);
+          }
+        }
+        if(unity && unity.parentNode !== row){
+          try{ row.appendChild(unity); }catch(_e){}
+        }
+        var copy = document.getElementById('vr-unity-copy');
+        if(!copy){
+          copy = document.createElement('div');
+          copy.id = 'vr-unity-copy';
+          copy.className = 'vr-copy';
+          row.appendChild(copy);
+        }else if(copy.parentNode !== row){
+          try{ row.appendChild(copy); }catch(_e){}
+        }
+
+        // Clear old
+        copy.innerHTML = '';
+
+        // First line (main, bold label) - like Overall ideology line
+        var line1 = document.createElement('div');
+        line1.className = 'vr-ideology';
+        try{
+          var ref = document.querySelector('#adv-card-voting .vr-ideology');
+          if(ref){
+            var fs = window.getComputedStyle(ref).fontSize;
+            if(fs) line1.style.fontSize = fs;
+          }
+        }catch(_e){}
+        var label1 = document.createElement('span');
+        label1.className = 'vr-ideology-label';
+        label1.style.fontWeight='700';
+        label1.textContent = 'Votes with ' + myParty + ': ';
+        var value1 = document.createElement('span');
+        value1.className = 'vr-ideology-values'; value1.id='unity-val-1';
+        value1.textContent = valStr1 + ' of the time';
+        line1.appendChild(label1);
+        line1.appendChild(value1);
+        copy.appendChild(line1);
+
+        // Second line (current-style, muted smaller) - opposite party bp_pct
+        var line2 = document.createElement('div');
+        line2.className = 'vr-ideology-current vr-historical-label';
+        line2.style.fontSize = '0.9em';
+        line2.style.marginTop = '4px';
+        var label2 = document.createElement('span');
+        label2.textContent = 'Votes with ' + oppParty + ': ';
+        var value2 = document.createElement('span'); value2.id='unity-val-2'; value2.textContent = valStr2 + ' of the time';
+        line2.appendChild(label2);
+        line2.appendChild(value2);
+        copy.appendChild(line2);
+        // ---- Third line: Votes with OTHER_PARTY against THEIR_PARTY (maverick bipartisan / total) ----
+        (function(){
+          var otherPartyWord = (isR ? 'Democrats' : 'Republicans');
+          var theirPartyWord = (isR ? 'Republicans' : 'Democrats');
+          var a = (data && data.alignment) || {};
+          var n3 = Number(a.maverick_bipartisan), d3 = Number(a.total_votes);
+          var v3 = (isFinite(n3) && isFinite(d3) && d3 > 0) ? (n3 / d3) * 100 : null;
+          var val3Str = (v3 == null) ? '—' : (Math.round(v3 * 10) / 10).toFixed(1).replace(/\.0$/, '');
+
+          var line3 = document.createElement('div');
+          line3.className = 'vr-ideology-current vr-historical-label';
+          line3.style.fontSize = '0.9em';
+          line3.style.marginTop = '4px';
+          var label3 = document.createElement('span');
+          label3.textContent = 'Votes with ' + otherPartyWord + ' against ' + theirPartyWord + ': ';
+          var value3 = document.createElement('span'); value3.id='unity-val-3'; value3.textContent = (val3Str + '%') + ' of the time';
+          line3.appendChild(label3);
+          line3.appendChild(value3);
+          copy.appendChild(line3);
+        })();
+
+        // ---- Fourth line: Votes against both parties ((maverick_votes - maverick_bipartisan) / total) ----
+        (function(){
+          var a = (data && data.alignment) || {};
+          var mv = Number(a.maverick_votes);
+          var mb = Number(a.maverick_bipartisan);
+          var tv = Number(a.total_votes);
+          var v4 = (isFinite(mv) && isFinite(mb) && isFinite(tv) && tv > 0) ? ((mv - mb) / tv) * 100 : null;
+          var val4Str = (v4 == null) ? '—' : (Math.round(v4 * 10) / 10).toFixed(1).replace(/\.0$/, '');
+
+          var line4 = document.createElement('div');
+          line4.className = 'vr-ideology-current vr-historical-label';
+          line4.style.fontSize = '0.9em';
+          line4.style.marginTop = '4px';
+          var label4 = document.createElement('span');
+          label4.textContent = 'Votes against both parties: ';
+          var value4 = document.createElement('span'); value4.id='unity-val-4'; value4.textContent = (val4Str + '%') + ' of the time';
+          line4.appendChild(label4);
+          line4.appendChild(value4);
+          copy.appendChild(line4);
+        })();
+
+        // ---- Fifth line: Fails to vote (missed / (total + missed)) ----
+        (function(){
+          var a = (data && data.alignment) || {};
+          var miss = Number(a.missed_votes);
+          var tot  = Number(a.total_votes);
+          var denom = (isFinite(miss)?miss:0) + (isFinite(tot)?tot:0);
+          var v5 = (denom > 0 && isFinite(miss)) ? (miss / denom) * 100 : null;
+          var val5Str = (v5 == null) ? '—' : (Math.round(v5 * 10) / 10).toFixed(1).replace(/\.0$/, '');
+
+          var line5 = document.createElement('div');
+          line5.className = 'vr-ideology-current vr-historical-label';
+          line5.style.fontSize = '0.9em';
+          line5.style.marginTop = '4px';
+          var label5 = document.createElement('span');
+          label5.textContent = 'Fails to vote: ';
+          var value5 = document.createElement('span'); value5.id='unity-val-5'; value5.textContent = (val5Str + '%') + ' of the time';
+          line5.appendChild(label5);
+          line5.appendChild(value5);
+          copy.appendChild(line5);
+        })();
+
+        // Add a third line for "Votes with OTHER_PARTY against THEIR_PARTY"
+        var otherPartyWord = (isR ? 'Democrats' : 'Republicans');
+        var theirPartyWord = (isR ? 'Republicans' : 'Democrats');
+        var rawMav = (data && data.alignment && data.alignment.maverick_bipartisan);
+        var rawTotal = (data && data.alignment && data.alignment.total_votes);
+        var val3 = null;
+        if(rawMav != null && rawTotal != null){
+          var num = Number(rawMav);
+          var den = Number(rawTotal);
+          if(isFinite(num) && isFinite(den) && den > 0){
+            val3 = (num / den) * 100;
+          }
+        }
+
+        var line3 = document.createElement('div');
+        line3.className = 'vr-ideology-current';
+        line3.classList.add('vr-historical-label');
+        line3.style.fontSize = '0.9em';
+        line3.style.marginTop = '4px';
+
+        var label3 = document.createElement('span');
+        label3.className = 'vr-ideology-label';
+        label3.textContent = 'Votes with ' + otherPartyWord + ' against ' + theirPartyWord + ': ';
+
+        var value3 = document.createElement('span');
+        value3.className = 'vr-ideology-values';
+        value3.textContent = (val3 == null ? '—' : (
+
+        val3Str + '%')) + ' of the time';
+
+        line3.appendChild(label3);
+        line3.appendChild(value3);
+        copy.appendChild(line3);
+        // ---- 4th line: Votes against both parties ----
+        (function(){
+          var a = (data && data.alignment) || {};
+          var mv = Number(a.maverick_votes);
+          var mb = Number(a.maverick_bipartisan);
+          var tv = Number(a.total_votes);
+          var val4 = null;
+          if(isFinite(mv) && isFinite(mb) && isFinite(tv) && tv > 0){
+            val4 = ((mv - mb) / tv) * 100;
+          }
+
+        var line4 = document.createElement('div');
+          line4.className = 'vr-ideology-current';
+          line4.classList.add('vr-historical-label');
+          line4.style.marginTop = '4px';
+          line4.style.fontSize = '0.9em';
+
+          var label4 = document.createElement('span');
+          label4.className = 'vr-ideology-label';
+          // no bold
+          // label4.style.fontWeight = '700';
+          label4.textContent = 'Votes against both parties: ';
+
+          var value4 = document.createElement('span');
+          value4.className = 'vr-ideology-values'; value4.id='unity-val-4';
+          value4.textContent = (val4 == null ? '—' : (
+
+        val4Str + '%')) + ' of the time';
+
+          line4.appendChild(label4);
+          line4.appendChild(value4);
+          copy.appendChild(line4);
+        })();
+
+        // ---- 5th line: Fails to vote ----
+        (function(){
+          var a = (data && data.alignment) || {};
+          var mv = Number(a.missed_votes);
+          var tv = Number(a.total_votes);
+          var val5 = null;
+          if(isFinite(mv) && isFinite(tv) && (tv + mv) > 0){
+            val5 = (mv / (tv + mv)) * 100;
+          }
+
+        var line5 = document.createElement('div');
+          line5.className = 'vr-ideology-current';
+          line5.classList.add('vr-historical-label');
+          line5.style.marginTop = '4px';
+          line5.style.fontSize = '0.9em';
+
+          var label5 = document.createElement('span');
+          label5.className = 'vr-ideology-label';
+          // no bold
+          // label5.style.fontWeight = '700';
+          label5.textContent = 'Fails to vote: ';
+
+          var value5 = document.createElement('span');
+          value5.className = 'vr-ideology-values'; value5.id='unity-val-5';
+          value5.textContent = (val5 == null ? '—' : (
+
+        val5Str + '%')) + ' of the time';
+
+          line5.appendChild(label5);
+          line5.appendChild(value5);
+          copy.appendChild(line5);
+        // === All-Time overrides for party-unity lines (update spans by id) ===
+        (function(){
+          try{
+            var scopeBtn = document.querySelector('#vr-time-tabs .tab.active');
+            var scope = scopeBtn && ((scopeBtn.getAttribute('data-scope')) || (scopeBtn.dataset && scopeBtn.dataset.scope)) || 'current';
+            var A = ((window.__memberData || window.memberData) || {}).alignment || {};
+            function pct(v){ return (v==null)?'—':(Math.round(v*10)/10).toFixed(1).replace(/\.0$/,'') + '%'; }
+            function safe(num,den){ var n=Number(num), d=Number(den); return (isFinite(n)&&isFinite(d)&&d>0)?(n/d)*100:null; }
+            if(scope === 'all'){
+              // 1) Votes with own party: 1 - (maverick_votes_all / total_votes_all)
+              (function(){
+                var v1 = (isFinite(Number(A.maverick_votes_all)) && isFinite(Number(A.total_votes_all)) && Number(A.total_votes_all)>0)
+                          ? (1 - (Number(A.maverick_votes_all)/Number(A.total_votes_all)))*100 : null;
+                var el = document.getElementById('unity-val-1'); if(el) el.textContent = pct(v1) + ' of the time';
+              })();
+              // 2) Votes with opposite party: (bipartisan_votes_all / total_votes_all)
+              (function(){
+                var v2 = safe(A.bipartisan_votes_all, A.total_votes_all);
+                var el = document.getElementById('unity-val-2'); if(el) el.textContent = pct(v2) + ' of the time';
+              })();
+              // 3) Votes with OTHER against THEIR: (maverick_bipartisan_all / total_votes_all)
+              (function(){
+                var v3 = safe(A.maverick_bipartisan_all, A.total_votes_all);
+                var el = document.getElementById('unity-val-3'); if(el) el.textContent = pct(v3) + ' of the time';
+              })();
+              // 4) Votes against both parties: ((maverick_votes_all - maverick_bipartisan_all) / total_all)
+              (function(){
+                var mAll = Number(A.maverick_votes_all), mbAll = Number(A.maverick_bipartisan_all), tAll = Number(A.total_votes_all);
+                var v4 = (isFinite(mAll)&&isFinite(mbAll)&&isFinite(tAll)&&tAll>0)?((mAll-mbAll)/tAll)*100:null;
+                var el = document.getElementById('unity-val-4'); if(el) el.textContent = pct(v4) + ' of the time';
+              })();
+              // 5) Fails to vote: (missed_votes_all / (total_votes_all + missed_votes_all))
+              (function(){
+                var miss = Number(A.missed_votes_all), tot = Number(A.total_votes_all);
+                var denom = (isFinite(miss)?miss:0) + (isFinite(tot)?tot:0);
+                var v5 = (denom>0 && isFinite(miss)) ? (miss/denom)*100 : null;
+                var el = document.getElementById('unity-val-5'); if(el) el.textContent = pct(v5) + ' of the time';
+              })();
+            }
+          }catch(_e){}
+        })();
+
+        // === All-Time overrides for party-unity lines (applied after elements are created) ===
+        (function(){
+          try{
+            var scopeBtn = document.querySelector('#vr-time-tabs .tab.active');
+            var scope = scopeBtn && ((scopeBtn.getAttribute('data-scope')) || (scopeBtn.dataset && scopeBtn.dataset.scope)) || 'current';
+            if(scope !== 'all') return;
+            var A = (data && data.alignment) || {};
+            function pct(v){ return (v==null)?'—':(Math.round(v*10)/10).toFixed(1).replace(/\.0$/,'') + '%'; }
+            function safe(num,den){ var n=Number(num), d=Number(den); return (isFinite(n)&&isFinite(d)&&d>0)?(n/d)*100:null; }
+            // 1) Votes with own party: 1 - (maverick_votes_all / total_votes_all)
+            var v1 = (isFinite(Number(A.maverick_votes_all)) && isFinite(Number(A.total_votes_all)) && Number(A.total_votes_all)>0)
+                      ? (1 - (Number(A.maverick_votes_all)/Number(A.total_votes_all)))*100 : null;
+            if (typeof value1 !== 'undefined') value1.textContent = pct(v1) + ' of the time';
+
+            // 2) Votes with opposite party (bp): (bipartisan_votes_all / total_votes_all)
+            var v2 = safe(A.bipartisan_votes_all, A.total_votes_all);
+            if (typeof value2 !== 'undefined') value2.textContent = pct(v2) + ' of the time';
+
+            // 3) Votes with OTHER against THEIR: (maverick_bipartisan_all / total_votes_all)
+            var v3 = safe(A.maverick_bipartisan_all, A.total_votes_all);
+            if (typeof value3 !== 'undefined') value3.textContent = pct(v3) + ' of the time';
+
+            // 4) Votes against both parties: ((maverick_votes_all - maverick_bipartisan_all) / total_votes_all)
+            var mAll = Number(A.maverick_votes_all), mbAll = Number(A.maverick_bipartisan_all), tAll = Number(A.total_votes_all);
+            var v4 = (isFinite(mAll)&&isFinite(mbAll)&&isFinite(tAll)&&tAll>0)?((mAll-mbAll)/tAll)*100:null;
+            if (typeof value4 !== 'undefined') value4.textContent = pct(v4) + ' of the time';
+
+            // 5) Fails to vote: (missed_votes_all / (total_votes_all + missed_votes_all))
+            var miss = Number(A.missed_votes_all), tot = Number(A.total_votes_all);
+            var denom = (isFinite(miss)?miss:0) + (isFinite(tot)?tot:0);
+            var v5 = (denom>0 && isFinite(miss)) ? (miss/denom)*100 : null;
+            if (typeof value5 !== 'undefined') value5.textContent = pct(v5) + ' of the time';
+          }catch(_e){}
+        })();
+
+        })();
+
+
+
+
+
+      }catch(_e){}
+    })();
+    // ---- end right-side line ----
+
+
+
+
+
+    // Optional: title above the square for clarity (comment out if not desired)
+    
+  } catch(e) { try{ console.error(e); }catch(_e){} }
+
+    // === All-Time overrides (query right pane && update all five lines) ===
+    (function(){
+      try{
+        var scopeBtn = document.querySelector('#vr-time-tabs .tab.active');
+        var scope = (scopeBtn && (scopeBtn.getAttribute('data-scope') || (scopeBtn.dataset && scopeBtn.dataset.scope))) || 'current';
+        if(scope !== 'all') return;
+
+        // Find the right-side copy container
+        var copy = document.getElementById('vr-unity-copy');
+        if(!copy){
+          var row = document.getElementById('vr-unity-row');
+          if(row) copy = row.querySelector('.vr-copy');
+        }
+        if(!copy) return;
+
+        // Each line is a div; the value span is the last span in that div
+        var lines = copy.querySelectorAll('div');
+        if(!lines || lines.length < 2) return; // need at least the first two lines present
+
+        // Data
+        var A = ((((window.__memberData || window.memberData) || {}).alignment) || {});
+        function fmt(v){ return (v==null) ? '—' : (Math.round(v*10)/10).toFixed(1).replace(/\.0$/, '') + '%'; }
+        function safeDiv(n,d){ n=Number(n); d=Number(d); return (isFinite(n) && isFinite(d) && d>0) && ((n/d)*100) || null }
+
+        var totalAll = Number(A.total_votes_all);
+
+        // 1) Votes with own party: 1 - (maverick_votes_all / total_votes_all)
+        try{
+          var span1 = lines[0] && lines[0].querySelectorAll('span');
+          if(span1 && span1.length){ 
+            var m = Number(A.maverick_votes_all);
+            var v1 = (isFinite(totalAll) && totalAll>0 && isFinite(m)) && ((1 - (m/totalAll))*100) || null;
+            span1[span1.length-1].textContent = fmt(v1) + ' of the time';
+          }
+        }catch(_e){}
+
+        // 2) Votes with opposite party
+        try{
+          var span2 = lines[1] && lines[1].querySelectorAll('span');
+          if(span2 && span2.length){
+            var b = Number(A.bipartisan_votes_all);
+            var v2 = (isFinite(totalAll) && totalAll>0 && isFinite(b)) && ((b/totalAll)*100) || null;
+            span2[span2.length-1].textContent = fmt(v2) + ' of the time';
+          }
+        }catch(_e){}
+
+        // 3) Votes with OTHER against THEIR
+        try{
+          var span3 = lines[2] && lines[2].querySelectorAll('span');
+          if(span3 && span3.length){
+            var mbp = Number(A.maverick_bipartisan_all);
+            var v3 = (isFinite(totalAll) && totalAll>0 && isFinite(mbp)) && ((mbp/totalAll)*100) || null;
+            span3[span3.length-1].textContent = fmt(v3) + ' of the time';
+          }
+        }catch(_e){}
+
+        // 4) Votes against both parties
+        try{
+          var span4 = lines[3] && lines[3].querySelectorAll('span');
+          if(span4 && span4.length){
+            var mv = Number(A.maverick_votes_all), mbp = Number(A.maverick_bipartisan_all);
+            var v4 = (isFinite(totalAll) && totalAll>0 && isFinite(mv) && isFinite(mbp)) && (((mv-mbp)/totalAll)*100) || null;
+            span4[span4.length-1].textContent = fmt(v4) + ' of the time';
+          }
+        }catch(_e){}
+
+        // 5) Fails to vote
+        try{
+          var span5 = lines[4] && lines[4].querySelectorAll('span');
+          if(span5 && span5.length){
+            var miss = Number(A.missed_votes_all);
+            var denom = (isFinite(totalAll)?totalAll:0) + (isFinite(miss)?miss:0);
+            var v5 = (denom>0 && isFinite(miss)) && ((miss/denom)*100) || null;
+            span5[span5.length-1].textContent = fmt(v5) + ' of the time';
+          }
+        }catch(_e){}
+
+      }catch(_e){}
+    })();
+
+}
+
+
+function ensureAdvancedVoteTabs(){
+  try{
+    var card = document.getElementById('adv-card-voting');
+    if(!card) return;
+
+    var similar = card.querySelector('.vr-similar');
+    var anchor = similar || card.querySelector('.section-title') || card;
+
+    // Time tabs
+    var timeWrap = document.getElementById('vr-time-tabs-wrap');
+    var timeTabs = document.getElementById('vr-time-tabs');
+    if(!timeWrap){
+      timeWrap = document.createElement('div'); timeWrap.className='mv-tabs-wrap'; timeWrap.id='vr-time-tabs-wrap';
+      timeTabs = document.createElement('div'); timeTabs.className='mv-tabs'; timeTabs.id='vr-time-tabs';
+      timeWrap.appendChild(timeTabs);
+      if(anchor && anchor.parentNode){ anchor.parentNode.insertBefore(timeWrap, anchor.nextSibling); } else { card.appendChild(timeWrap); }
+    }
+    if(!timeTabs){ timeTabs = document.createElement('div'); timeTabs.className='mv-tabs'; timeTabs.id='vr-time-tabs'; timeWrap.appendChild(timeTabs); }
+    timeTabs.innerHTML = ''
+      + '<button type="button" class="btn tab active" data-scope="current">This Congress</button>'
+      + '<button type="button" class="btn tab" data-scope="all">All Time</button>';
+
+    // Type tabs
+    var typeWrap = document.getElementById('vr-type-tabs-wrap');
+    try{
+      var tt = document.getElementById('vr-time-tabs');
+      if(tt && !tt.__unityHooked){
+        tt.addEventListener('click', function(ev){
+          var t = ev.target;
+          if(t && t.classList && t.classList.contains('tab')){
+            setTimeout(function(){ try{ ensurePartyUnityInset(); }catch(e){} }, 0);
+          }
+        }, true);
+        tt.__unityHooked = true;
+      }
+    }catch(_e){}
+
+    var typeTabs = document.getElementById('vr-type-tabs');
+    if(!typeWrap){
+      typeWrap = document.createElement('div'); typeWrap.className='mv-tabs-wrap'; typeWrap.id='vr-type-tabs-wrap';
+      typeTabs = document.createElement('div'); typeTabs.className='mv-tabs'; typeTabs.id='vr-type-tabs';
+      typeWrap.appendChild(typeTabs);
+      var after = timeWrap || anchor;
+      if(after && after.parentNode){ after.parentNode.insertBefore(typeWrap, after.nextSibling); } else { card.appendChild(typeWrap); }
+    }
+    if(!typeTabs){ typeTabs = document.createElement('div'); typeTabs.className='mv-tabs'; typeTabs.id='vr-type-tabs'; typeWrap.appendChild(typeTabs); }
+    typeTabs.innerHTML = ''
+      + '<button type="button" class="btn tab active" data-type="major">Major Votes</button>'
+      + '<button type="button" class="btn tab" data-type="maverick">Maverick Votes</button>'
+      + '<button type="button" class="btn tab" data-type="missed">Missed Votes</button>';
+
+    // Content area
+    var content = document.getElementById('vr-tab-content');
+    if(!content){
+      content = document.createElement('div');
+      content.id = 'vr-tab-content';
+      content.className = 'vr-tab-content';
+      var after2 = typeWrap || timeWrap || anchor;
+      if(after2 && after2.parentNode){ after2.parentNode.insertBefore(content, after2.nextSibling); } else { card.appendChild(content); }
+    }
+
+    // Data mapping (lists are independent of time tabs; always use current-congress arrays)
+    function getData(){ return (window.__memberData || window.memberData) || {}; }
+    function listFor(type){
+      var d = getData();
+      if(type==='maverick') return d.maverick_votes || d.maverickVotes || [];
+      if(type==='missed')   return d.missed_votes || d.missedVotes || [];
+      return d.key_votes || d.keyVotes || d.recent_major_votes || [];
+    }
+
+    // Render list
+    function renderVoteList(root, items, type){
+      root.innerHTML = '';
+      if(!items || !items.length){
+        var empty = document.createElement('div');
+        empty.className = 'muted';
+        var label = (type==='major'?'major': (type==='maverick'?'maverick':'missed'));
+        empty.textContent = 'No ' + label + ' votes available.';
+        root.appendChild(empty);
+        return;
+      }
+      var expanded = !!root.__expanded;
+      var slice = expanded ? items.slice() : items.slice(0, Math.min(3, items.length));
+      slice.forEach(function(v){
+        var row = document.createElement('div');
+        row.className = 'stack';
+        row.style.borderTop = '1px solid var(--border)';
+        row.style.paddingTop = '8px';
+
+        var q = (v && (v.question || v.title || v.bill || v.id)) || 'Vote';
+        var how = (v && (v.vote || v.member_vote || v.member_position || v.position || v.choice)) || '';
+        var mv  = (v && v.maverick_vote === true) ? ' (maverick)' : '';
+        var date= (v && (v.date || v.voted_at || v.roll_date)) || '';
+
+        var head = document.createElement('div');
+        var strong = document.createElement('strong'); strong.textContent = String(q); head.appendChild(strong);
+        if(date){
+          var sep = document.createTextNode(' • '); head.appendChild(sep);
+          var span = document.createElement('span'); span.className='muted';
+          try{ span.textContent = new Date(date).toLocaleDateString(); }catch(e){ span.textContent = String(date); }
+          head.appendChild(span);
+        }
+        row.appendChild(head);
+
+        var descText = (v && (v.vote_desc || v.dtl_desc || v.description || v.summary)) || '';
+        if(descText){
+          var desc = document.createElement('div');
+          desc.className = 'muted';
+          desc.textContent = String(descText);
+          row.appendChild(desc);
+        }
+
+        var meta = document.createElement('div');
+        meta.className = 'muted';
+        meta.textContent = (how ? ('Position: ' + how + mv) : '');
+        meta.style.marginBottom = '8px';
+        row.appendChild(meta);
+
+        root.appendChild(row);
+      });
+
+      if(items.length > 3){
+        var ctr = document.createElement('div');
+        ctr.style.paddingTop = '8px';
+        var btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.textContent = expanded ? 'Show less' : 'Show more';
+        btn.addEventListener('click', function(e){
+          e.preventDefault(); e.stopPropagation();
+          var x=window.scrollX||0, y=window.scrollY||0;
+          try{ root.__expanded = !expanded; renderCurrent(); } finally { try{ window.scrollTo(x,y); }catch(_e){} }
+        });
+        ctr.appendChild(btn);
+        root.appendChild(ctr);
+      }
+    }
+
+    function currentSelection(){
+      var tActive = typeTabs.querySelector('.btn.tab.active');
+      var type = (tActive && tActive.dataset && tActive.dataset.type) || 'major';
+      return {type:type};
+    }
+
+    function renderCurrent(){
+      var sel = currentSelection();
+      var items = listFor(sel.type);
+      renderVoteList(content, items, sel.type);
+      return (items && items.length) ? true : false;
+    }
+
+    function setActive(btn){
+      var parent = btn && btn.parentElement; if(!parent) return;
+      var peers = parent.querySelectorAll('.btn.tab');
+      for(var i=0;i<peers.length;i++){ peers[i].classList.toggle('active', peers[i]===btn); }
+    }
+
+    // Time tabs: only toggle active; do not drive list rendering
+    if(!timeTabs._wired){
+      timeTabs._wired = true;
+      timeTabs.addEventListener('click', function(e){
+        e.preventDefault(); e.stopPropagation();
+        var btn = e.target.closest('.btn.tab'); if(!btn) return;
+        var x=window.scrollX||0, y=window.scrollY||0;
+        try{ setActive(btn); } finally { try{ window.scrollTo(x,y); }catch(_e){} }
+      });
+    }
+    if(!typeTabs._wired){
+      typeTabs._wired = true;
+      typeTabs.addEventListener('click', function(e){
+        e.preventDefault(); e.stopPropagation();
+        var btn = e.target.closest('.btn.tab'); if(!btn) return;
+        var x=window.scrollX||0, y=window.scrollY||0;
+        try{ setActive(btn); renderCurrent(); } finally { try{ window.scrollTo(x,y); }catch(_e){} }
+      });
+    }
+
+    // Initial paint + polling
+    if(!renderCurrent()){
+      if(!content._initialPoll){
+        var tries = 0;
+        content._initialPoll = setInterval(function(){
+          tries++;
+          var ok = renderCurrent();
+          if(ok || tries>50){
+  try { clearInterval(content._initialPoll); } catch(_e) {}
+  content._initialPoll = null;
+}
+        }, 200);
+      }
+    }
+  } catch (e) {
+  try { console.error(e); } catch (_e) {}
+}
+}
+
+// --- Voting Record tabs styles (full-width, blue active) ---
 function init(){
-    ensureAdvancedCards();
-    showAdvancedAndHideBasic();
-    renderHeaderOnly();
-    ensureVotingRecordInset();
-  }
+  try{ ensureAdvancedCards(); }catch(e){}
+  try{ showAdvancedAndHideBasic(); }catch(e){}
+  try{ renderHeaderOnly(); }catch(e){}
+  try{ ensureVotingRecordInset(); }catch(e){}
+  try{ ensureAdvancedVoteTabs(); }catch(e){}
+}
 
   ready(init);
 })();
+;
 
 try{
   window._forcePartyMedianRender = function(){
@@ -1225,4 +2081,7 @@ try{
     // if already checked, render immediately
     if(cb.checked){ window._renderPartyMedianMinimal(); }
   })();
+;
 }catch(e){}
+
+;try{ if (typeof ready==='function') { ready(function(){ try{ ensureAdvancedVoteTabs(); }catch(e){} }); } }catch(_e){}
