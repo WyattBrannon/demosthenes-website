@@ -1,6 +1,49 @@
 // member_adv.app.js — Advanced Mode: header + four new analysis cards
 (function(){
   "use strict";
+var __ADV_STATE_NAME_TO_INFO = {"ALABAMA": {"usps": "AL", "fips": "01"}, "ALASKA": {"usps": "AK", "fips": "02"}, "ARIZONA": {"usps": "AZ", "fips": "04"}, "ARKANSAS": {"usps": "AR", "fips": "05"}, "CALIFORNIA": {"usps": "CA", "fips": "06"}, "COLORADO": {"usps": "CO", "fips": "08"}, "CONNECTICUT": {"usps": "CT", "fips": "09"}, "DELAWARE": {"usps": "DE", "fips": "10"}, "DISTRICT OF COLUMBIA": {"usps": "DC", "fips": "11"}, "FLORIDA": {"usps": "FL", "fips": "12"}, "GEORGIA": {"usps": "GA", "fips": "13"}, "HAWAII": {"usps": "HI", "fips": "15"}, "IDAHO": {"usps": "ID", "fips": "16"}, "ILLINOIS": {"usps": "IL", "fips": "17"}, "INDIANA": {"usps": "IN", "fips": "18"}, "IOWA": {"usps": "IA", "fips": "19"}, "KANSAS": {"usps": "KS", "fips": "20"}, "KENTUCKY": {"usps": "KY", "fips": "21"}, "LOUISIANA": {"usps": "LA", "fips": "22"}, "MAINE": {"usps": "ME", "fips": "23"}, "MARYLAND": {"usps": "MD", "fips": "24"}, "MASSACHUSETTS": {"usps": "MA", "fips": "25"}, "MICHIGAN": {"usps": "MI", "fips": "26"}, "MINNESOTA": {"usps": "MN", "fips": "27"}, "MISSISSIPPI": {"usps": "MS", "fips": "28"}, "MISSOURI": {"usps": "MO", "fips": "29"}, "MONTANA": {"usps": "MT", "fips": "30"}, "NEBRASKA": {"usps": "NE", "fips": "31"}, "NEVADA": {"usps": "NV", "fips": "32"}, "NEW HAMPSHIRE": {"usps": "NH", "fips": "33"}, "NEW JERSEY": {"usps": "NJ", "fips": "34"}, "NEW MEXICO": {"usps": "NM", "fips": "35"}, "NEW YORK": {"usps": "NY", "fips": "36"}, "NORTH CAROLINA": {"usps": "NC", "fips": "37"}, "NORTH DAKOTA": {"usps": "ND", "fips": "38"}, "OHIO": {"usps": "OH", "fips": "39"}, "OKLAHOMA": {"usps": "OK", "fips": "40"}, "OREGON": {"usps": "OR", "fips": "41"}, "PENNSYLVANIA": {"usps": "PA", "fips": "42"}, "RHODE ISLAND": {"usps": "RI", "fips": "44"}, "SOUTH CAROLINA": {"usps": "SC", "fips": "45"}, "SOUTH DAKOTA": {"usps": "SD", "fips": "46"}, "TENNESSEE": {"usps": "TN", "fips": "47"}, "TEXAS": {"usps": "TX", "fips": "48"}, "UTAH": {"usps": "UT", "fips": "49"}, "VERMONT": {"usps": "VT", "fips": "50"}, "VIRGINIA": {"usps": "VA", "fips": "51"}, "WASHINGTON": {"usps": "WA", "fips": "53"}, "WEST VIRGINIA": {"usps": "WV", "fips": "54"}, "WISCONSIN": {"usps": "WI", "fips": "55"}, "WYOMING": {"usps": "WY", "fips": "56"}, "PUERTO RICO": {"usps": "PR", "fips": "72"}};
+
+
+
+// Helper: load Turf.js (for robust polygon clipping) if not already loaded
+function __advEnsureTurf(){
+  return new Promise(function(resolve, reject){
+    if (window.turf) return resolve(window.turf);
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js';
+    s.async = true;
+    s.onload = function(){ resolve(window.turf); };
+    s.onerror = function(){ reject(new Error('Failed to load turf')); };
+    document.head.appendChild(s);
+  });
+}
+
+
+
+// Helper: replace the Leaflet map element with a fresh clone so we can re-initialize safely
+function __advFreshMapEl(){
+  var el = document.getElementById('adv-district-map');
+  if(!el) return null;
+  var fresh = el.cloneNode(false);
+  if(el.parentNode){ el.parentNode.replaceChild(fresh, el); }
+  return fresh;
+}
+
+
+(function injectAdvDistrictTabStyles(){
+  if(document.getElementById('adv-district-tabs-style')) return;
+  var st = document.createElement('style');
+  st.id = 'adv-district-tabs-style';
+  st.textContent = [
+    '#adv-card-district .mv-tabs-wrap{ width:100%; max-width:100%; display:block; margin:12px 0 4px 0; }',
+    '#adv-card-district .mv-tabs{ display:grid; width:100%; gap:8px; }',
+    '#adv-card-district #adv-district-tabs.mv-tabs{ grid-template-columns: repeat(3, minmax(0,1fr)); }',
+    '#adv-card-district .mv-tabs .btn.tab{ width:100%; box-sizing:border-box; display:block; }',
+    '#adv-card-district .mv-tabs .btn.tab.active{ background:var(--primary, #0B5FFF); color:#fff; border-color:var(--primary, #0B5FFF); }'
+  ].join('\n');
+  document.head.appendChild(st);
+})();
+
 
 // --- Advanced: explicit map section + renderer ---
 function renderAdvDistrictMapInset(){
@@ -33,7 +76,8 @@ if (useStateOverlay) {
 }
 var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*&returnGeometry=true&f=geojson";
 
-          // Initialize map
+          // Initialize map (refresh container to avoid double-init)
+          mapEl = __advFreshMapEl() || mapEl;
           var map = L.map(mapEl, { scrollWheelZoom:false, dragging:true, touchZoom:true });
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
@@ -65,6 +109,381 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
 }
 
 
+
+
+function renderAdvCountyPres2020(){
+  try{
+    var noteEl = document.getElementById('district-map-note-adv');
+    var mapEl  = document.getElementById('adv-district-map');
+    if (!mapEl || typeof L === 'undefined') return;
+
+    function pad2(n){ n=String(n||''); return n.length<2?('0'+n):n; }
+    var STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09","DE":"10","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17","IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24","MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31","NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38","OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46","TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54","WI":"55","WY":"56","DC":"11","PR":"72"};
+
+    var id = (typeof data!=='undefined' && data && data.identity) ? data.identity : {};
+    var state = (id.state || '').toUpperCase();
+    var district = (id.district || '').toString().toUpperCase();
+    if (!state){ if(noteEl) noteEl.textContent = 'Map unavailable (missing state)'; return; }
+    if (district === 'AL' || district === 'AT-LARGE' || district === '0' || district === '00') district = '00';
+    if (/^\d+$/.test(district)) district = pad2(district);
+
+    var stfp = STATE_FIPS[state];
+    if (!stfp){ if(noteEl) noteEl.textContent = 'Map unavailable (unknown state)'; return; }
+
+    // Fresh container
+    mapEl = __advFreshMapEl() || mapEl;
+    var map = L.map(mapEl, { scrollWheelZoom:false, dragging:true, touchZoom:true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    var useStateOverlay = (!district || district === '00');
+    var layerURL, where;
+    if (useStateOverlay) {
+      layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/76"; // States
+      where = "STATE='" + stfp + "'";
+    } else {
+      layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/50"; // CD118
+      where = "STATE='" + stfp + "' AND CD118='" + district + "'";
+    }
+    var baseUrl = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*&returnGeometry=true&f=geojson";
+
+    __advEnsureTurf()
+      .then(function(){
+        return fetch(baseUrl, { cache:'force-cache' }).then(function(r){ return r.json(); });
+      })
+      .then(function(baseGeo){
+        try{
+          var baseLayer=null, baseBounds=null, clipGeom=null;
+          if (baseGeo && baseGeo.features && baseGeo.features.length){
+            baseLayer = L.geoJSON(baseGeo, { style:{ color:'#2563eb', weight:2, fillOpacity:0.10 } }).addTo(map);
+            baseBounds = baseLayer.getBounds();
+            if(baseBounds) map.fitBounds(baseBounds, { padding:[12,12] });
+
+            // union base features to a single clip geom
+            var feats = baseGeo.features.map(function(f){ return window.turf.cleanCoords(f); });
+            clipGeom = feats[0];
+            for(var i=1;i<feats.length;i++){
+              try{ clipGeom = window.turf.union(clipGeom, feats[i]); }catch(e){ /* keep prior clipGeom on union failure */ }
+            }
+          }
+          if(!clipGeom){ if(noteEl) noteEl.textContent = 'District outline unavailable.'; return; }
+
+          var overlayURL = "https://wyattbrannon.github.io/demosthenes-data/county-results/county_district_2020.geojson";
+          return fetch(overlayURL, { cache:'force-cache' }).then(function(r){ return r.json(); }).then(function(overlayGeo){
+            try{
+              if(!overlayGeo || !overlayGeo.features){ if(noteEl) noteEl.textContent = 'County overlay unavailable.'; return; }
+
+              // prefilter by bounds (quick reject)
+              var candidates = overlayGeo.features;
+              var prefiltered = [];
+              if(baseBounds){
+                var minLon = baseBounds.getWest(), minLat = baseBounds.getSouth(), maxLon = baseBounds.getEast(), maxLat = baseBounds.getNorth();
+                for(var i=0;i<candidates.length;i++){
+                  try{
+                    var lyr = L.geoJSON(candidates[i]);
+                    var b = lyr.getBounds();
+                    if(!b) continue;
+                    if(b.getEast() < minLon || b.getWest() > maxLon || b.getNorth() < minLat || b.getSouth() > maxLat) continue;
+                    prefiltered.push(candidates[i]);
+                  }catch(e){}
+                }
+              }else{
+                prefiltered = candidates.slice(0);
+              }
+
+              var clipped = [];
+              for(var j=0;j<prefiltered.length;j++){
+                var cf = prefiltered[j];
+                try{
+                  if(window.turf.booleanIntersects(cf, clipGeom)){
+                    var piece = window.turf.intersect(window.turf.cleanCoords(cf), clipGeom);
+                    if(piece){
+                      piece.properties = Object.assign({}, cf.properties || {});
+                      clipped.push(piece);
+                    }
+                  }
+                }catch(e){}
+              }
+
+              if(!clipped.length){
+                if(noteEl) noteEl.textContent = 'No county results for ' + state + (district && district!=='00' ? ('-'+district) : '') + '.';
+                return;
+              }
+
+              var layer = L.geoJSON({ type:'FeatureCollection', features:clipped }, {
+                style: function(feature){
+                  var p = feature && feature.properties || {};
+                  var fill = p.color_2020_pres || p.color || '#999';
+                  return { color: '#111', weight: 0.5, fillOpacity: 0.65, fillColor: String(fill) };
+                },
+                
+
+onEachFeature: function(feature, lyr){
+  var p = feature && feature.properties || {};
+  var label = (p.county || p.NAME || p.name || 'County');
+
+  // Read margin_pct_2020_pres and normalize to absolute percentage
+  var raw = (p.margin_pct_2020_pres != null) ? p.margin_pct_2020_pres : null;
+  var marginText = '';
+  if (raw != null) {
+    var num = parseFloat(raw);
+    if (isFinite(num)) {
+      if (Math.abs(num) <= 1) num = num * 100;
+      num = Math.abs(num);
+      var pct = Math.round(num * 10) / 10;
+      marginText = ' — Two-party margin: ' + pct.toFixed(1) + '%';
+    }
+  }
+  lyr.bindTooltip(label + marginText, { sticky:true });
+}
+
+
+              }).addTo(map);
+
+              if(baseBounds){
+                map.fitBounds(baseBounds, { padding:[12,12] });
+              }else{
+                try{ map.fitBounds(layer.getBounds(), { padding:[12,12] }); }catch(e){}
+              }
+
+              if(noteEl){
+                var title = state + (district==='00'?' (2020 Pres by County)':'-'+district+' (2020 Pres by County)');
+                noteEl.textContent = title;
+              }
+            }catch(e){ if(noteEl) noteEl.textContent = 'Overlay error'; }
+          });
+        }catch(e){ if(noteEl) noteEl.textContent = 'Map error'; }
+      })
+      .catch(function(){ if(noteEl) noteEl.textContent = 'Map unavailable (network/geotools)'; });
+  }catch(e){ /* optional */ }
+}
+
+function renderAdvCountyHouse2022(){
+  try{
+    var noteEl = document.getElementById('district-map-note-adv');
+    var mapEl  = document.getElementById('adv-district-map');
+    if (!mapEl || typeof L === 'undefined') return;
+
+    function pad2(n){ n=String(n||''); return n.length<2?('0'+n):n; }
+    var STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09","DE":"10","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17","IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24","MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31","NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38","OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46","TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54","WI":"55","WY":"56","DC":"11","PR":"72"};
+
+    var id = (typeof data!=='undefined' && data && data.identity) ? data.identity : {};
+    var state = (id.state || '').toUpperCase();
+    var district = (id.district || '').toString().toUpperCase();
+    if (!state){ if(noteEl) noteEl.textContent = 'Map unavailable (missing state)'; return; }
+    if (district === 'AL' || district === 'AT-LARGE' || district === '0' || district === '00') district = '00';
+    if (/^\d+$/.test(district)) district = pad2(district);
+
+    var stfp = STATE_FIPS[state];
+    if (!stfp){ if(noteEl) noteEl.textContent = 'Map unavailable (unknown state)'; return; }
+
+    // Fresh container
+    mapEl = __advFreshMapEl() || mapEl;
+    var map = L.map(mapEl, { scrollWheelZoom:false, dragging:true, touchZoom:true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    var useStateOverlay = (!district || district === '00');
+    var layerURL, where;
+    if (useStateOverlay) {
+      layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/76"; // States
+      where = "STATE='" + stfp + "'";
+    } else {
+      layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/50"; // CD118
+      where = "STATE='" + stfp + "' AND CD118='" + district + "'";
+    }
+    var baseUrl = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*&returnGeometry=true&f=geojson";
+
+    __advEnsureTurf()
+      .then(function(){
+        return fetch(baseUrl, { cache:'force-cache' }).then(function(r){ return r.json(); });
+      })
+      .then(function(baseGeo){
+        try{
+          var baseLayer=null, baseBounds=null, clipGeom=null;
+          if (baseGeo && baseGeo.features && baseGeo.features.length){
+            baseLayer = L.geoJSON(baseGeo, { style:{ color:'#2563eb', weight:2, fillOpacity:0.10 } }).addTo(map);
+            baseBounds = baseLayer.getBounds();
+            if(baseBounds) map.fitBounds(baseBounds, { padding:[12,12] });
+
+            // union base features to a single clip geom
+            var feats = baseGeo.features.map(function(f){ return window.turf.cleanCoords(f); });
+            clipGeom = feats[0];
+            for(var i=1;i<feats.length;i++){
+              try{ clipGeom = window.turf.union(clipGeom, feats[i]); }catch(e){ /* keep prior clipGeom on union failure */ }
+            }
+          }
+          if(!clipGeom){ if(noteEl) noteEl.textContent = 'District outline unavailable.'; return; }
+
+          var overlayURL = "https://wyattbrannon.github.io/demosthenes-data/county-results/county_district_2020.geojson";
+          return fetch(overlayURL, { cache:'force-cache' }).then(function(r){ return r.json(); }).then(function(overlayGeo){
+            try{
+              if(!overlayGeo || !overlayGeo.features){ if(noteEl) noteEl.textContent = 'County overlay unavailable.'; return; }
+
+              // prefilter by bounds (quick reject)
+              var candidates = overlayGeo.features;
+              var prefiltered = [];
+              if(baseBounds){
+                var minLon = baseBounds.getWest(), minLat = baseBounds.getSouth(), maxLon = baseBounds.getEast(), maxLat = baseBounds.getNorth();
+                for(var i=0;i<candidates.length;i++){
+                  try{
+                    var lyr = L.geoJSON(candidates[i]);
+                    var b = lyr.getBounds();
+                    if(!b) continue;
+                    if(b.getEast() < minLon || b.getWest() > maxLon || b.getNorth() < minLat || b.getSouth() > maxLat) continue;
+                    prefiltered.push(candidates[i]);
+                  }catch(e){}
+                }
+              }else{
+                prefiltered = candidates.slice(0);
+              }
+
+              
+              // If overlay already contains county-by-district geometries (it does),
+              // prefer attribute filtering over geometric clipping to preserve properties exactly.
+              var clipped = [];
+              var propFiltered = [];
+              try{
+                var wantDistrict = (district || '00');
+                if (/^\d+$/.test(wantDistrict)) wantDistrict = (wantDistrict.length<2?('0'+wantDistrict):wantDistrict);
+                var inState = function(fips){ return typeof fips==='string' && fips.slice(0,2) === stfp; };
+                for(var k=0;k<prefiltered.length;k++){
+                  var pf = prefiltered[k];
+                  var pp = pf && pf.properties || {};
+                  if(pp && pp.district && pp.county_fips){
+                    if(pp.district === wantDistrict && inState(String(pp.county_fips))){
+                      propFiltered.push(pf);
+                    }
+                  }
+                }
+              }catch(e){ /* ignore */ }
+
+              if(propFiltered.length){
+                clipped = propFiltered;
+              } else {
+                // Fallback: do geometric clipping
+                for(var j=0;j<prefiltered.length;j++){
+                  var cf = prefiltered[j];
+                  try{
+                    if(window.turf.booleanIntersects(cf, clipGeom)){
+                      var piece = window.turf.intersect(window.turf.cleanCoords(cf), clipGeom);
+                      if(piece){
+                        piece.properties = Object.assign({}, cf.properties || {});
+                        clipped.push(piece);
+                      }
+                    }
+                  }catch(e){}
+                }
+              }
+if(!clipped.length){
+                if(noteEl) noteEl.textContent = 'No county results for ' + state + (district && district!=='00' ? ('-'+district) : '') + '.';
+                return;
+              }
+
+              var layer = L.geoJSON({ type:'FeatureCollection', features:clipped }, {
+                style: function(feature){
+                  var p = feature && feature.properties || {};
+                  // Prefer explicit House color fields; fall back to deriving from House margin; then any generic color
+                  var fill = p.color_2022_house || p.color_house_2022 || p.color_house || p.house_color || p.houseColour || p.house_color_hex || null;
+                  if(!fill){
+                    var rawm = (p.margin_pct_2022_house != null) ? p.margin_pct_2022_house
+                              : (p.house_margin_pct != null) ? p.house_margin_pct
+                              : (p.margin_pct_house_2022 != null) ? p.margin_pct_house_2022
+                              : (p.margin_house != null) ? p.margin_house
+                              : null;
+                    var m = parseFloat(rawm);
+                    if (isFinite(m)){
+                      if (Math.abs(m) <= 1) m = m * 100;
+                      fill = (m >= 0 ? '#2563eb' : '#dc2626'); // blue if D+, red if R+
+                    }
+                  }
+                  fill = fill || p.color || '#999';
+                  return { color: '#111', weight: 0.5, fillOpacity: 0.65, fillColor: String(fill) };
+                },
+                onEachFeature: function(feature, lyr){
+                  var p = feature && feature.properties || {};
+                  var label = (p.county || p.NAME || p.name || p.county_name_x || p.county_name_y || 'County');
+
+                  // Optional one-time debug: list available keys to console to verify field names
+                  if (!window.__ADV_LOGGED_HOUSE_KEYS__) {
+                    try { console.debug('[adv] House feature keys:', Object.keys(p)); } catch(e){}
+                    window.__ADV_LOGGED_HOUSE_KEYS__ = true;
+                  }
+
+                  // House margin (absolute percent) with robust fallbacks
+                  var raw = (p.margin_pct_2022_house != null) ? p.margin_pct_2022_house
+                           : (p.house_margin_pct != null) ? p.house_margin_pct
+                           : (p.margin_pct_house_2022 != null) ? p.margin_pct_house_2022
+                           : (p.margin_house != null) ? p.margin_house
+                           : null;
+                  var marginText = '';
+                  if (raw != null) {
+                    var num = parseFloat(raw);
+                    if (isFinite(num)) {
+                      if (Math.abs(num) <= 1) num = num * 100;
+                      num = Math.abs(num);
+                      var pct = Math.round(num * 10) / 10;
+                      marginText = ' — Two-party margin: ' + pct.toFixed(1) + '%';
+                    }
+                  }
+                  lyr.bindTooltip(label + marginText, { sticky:true });
+                }
+
+              }).addTo(map);
+
+              if(baseBounds){
+                map.fitBounds(baseBounds, { padding:[12,12] });
+              }else{
+                try{ map.fitBounds(layer.getBounds(), { padding:[12,12] }); }catch(e){}
+              }
+
+              if(noteEl){
+                var title = state + (district==='00'?' (2022 House by County)':'-'+district+' (2022 House by County)');
+                noteEl.textContent = title;
+              }
+            }catch(e){ if(noteEl) noteEl.textContent = 'Overlay error'; }
+          });
+        }catch(e){ if(noteEl) noteEl.textContent = 'Map error'; }
+      })
+      .catch(function(){ if(noteEl) noteEl.textContent = 'Map unavailable (network/geotools)'; });
+  }catch(e){ /* optional */ }
+}
+
+
+
+function ensureAdvDistrictTabs(){
+  try{
+    var card = document.getElementById('adv-card-district');
+    if(!card) return;
+    var tabs = card.querySelector('#adv-district-tabs');
+    if(!tabs || tabs.__bound) return;
+    tabs.__bound = true;
+    tabs.addEventListener('click', function(ev){
+      var btn = ev.target;
+      if(!btn || !btn.classList || !btn.classList.contains('tab')) return;
+      var view = btn.getAttribute('data-view');
+      // toggle active classes
+      var all = tabs.querySelectorAll('.tab');
+      for(var i=0;i<all.length;i++){
+        var t = all[i];
+        var isActive = (t === btn);
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      }
+      // simple hook: for now, just re-render the district map when switching back to 'district'
+      try{
+        if(view === 'district'){ renderAdvDistrictMapInset(); }
+        else if(view === 'countyHouse2022'){ renderAdvCountyHouse2022(); }
+        else if(view === 'county2024'){ renderAdvCountyPres2020(); }
+      }catch(e){}
+    }, true);
+  }catch(e){}
+}
+
 function ensureAdvDistrictSection(){
   try{
     var advCard = document.getElementById('adv-card-district');
@@ -73,12 +492,20 @@ function ensureAdvDistrictSection(){
 
     var titleEl = advCard.querySelector('.section-title');
     if(titleEl){
-      var mapHTML = ''
+            var tabsHTML = ''
+        + '<div class="mv-tabs-wrap">'
+        + '  <div id="adv-district-tabs" class="mv-tabs" role="tablist" aria-label="District map view tabs">'
+        + '    <button class="btn tab active" data-view="district" type="button" role="tab" aria-selected="true">District View</button>'
+        + '    <button class="btn tab" data-view="countyHouse2022" type="button" role="tab" aria-selected="false">2022 House by County</button>'
+        + '    <button class="btn tab" data-view="county2024" type="button" role="tab" aria-selected="false">2020 Presidential by County</button>'
+        + '  </div>'
+        + '</div>';
+    var mapHTML = ''
         + '<div id="adv-district-map-inset" style="margin-top:8px">'
         + '  <div id="adv-district-map" style="height:180px; border-radius:12px; overflow:hidden; margin-top:6px;"></div>'
         + '  <div id="district-map-note-adv" class="muted">Loading district map...</div>'
         + '</div>';
-      titleEl.insertAdjacentHTML('afterend', mapHTML);
+      titleEl.insertAdjacentHTML('afterend', tabsHTML + mapHTML);
     }
 
     function moveIfExists(id){
@@ -92,7 +519,7 @@ function ensureAdvDistrictSection(){
     moveIfExists('office-list');
     moveIfExists('office-list-none');
 
-    advCard.__advDistrictBuilt = true;
+    advCard.__advDistrictBuilt = true; try{ ensureAdvDistrictTabs(); }catch(e){}
     try{ renderAdvDistrictMapInset(); }catch(e){}
   }catch(e){}
 }
@@ -2292,3 +2719,217 @@ try{
 }catch(e){}
 
 ;try{ if (typeof ready==='function') { ready(function(){ try{ ensureAdvancedVoteTabs(); }catch(e){} }); } }catch(_e){}
+
+;(()=>{
+  // === County Overlay Manager (build once, swap styles, Canvas renderer) ===
+  if (typeof window === 'undefined' || !window.L) return;
+  const Lref = window.L;
+
+  // Avoid double-install
+  if (window.__CountyOverlayManagerInstalled__) return;
+  window.__CountyOverlayManagerInstalled__ = true;
+
+  // Utility: loose detection of county overlay GeoJSON
+  function looksLikeCountyGeoJSON(geojson){
+    try{
+      const f = geojson && (geojson.features && geojson.features[0]);
+      const p = f && f.properties || null;
+      if(!p) return false;
+      const keys = Object.keys(p);
+      const wanted = [
+        'county_fips','county','NAME','name','county_name_x','county_name_y','district',
+        'two_party_2020_pres','margin_pct_2020_pres','color_2020_pres',
+        'two_party_2022_house','margin_pct_2022_house','color_2022_house'
+      ];
+      return wanted.some(k => keys.indexOf(k) !== -1);
+    }catch(e){ return false; }
+  }
+
+  // Normalize margin text to a percentage number
+  function normToPercent(raw){
+    if(raw == null) return NaN;
+    let s = String(raw).trim();
+    s = s.replace(/\u2212/g, '-')   // Unicode minus
+         .replace(/,/g, '')
+         .replace(/%/g, '')
+         .replace(/^(EVEN|TIED)$/i, '0')
+         .replace(/^[DRI]\s*\+?/i, '');
+    let n = parseFloat(s);
+    if(!Number.isFinite(n)) return NaN;
+    // If data is in proportion (0.8) instead of percent (80), scale up
+    if (Math.abs(n) <= 1) n = n * 100;
+    return n;
+  }
+
+  // Label helper
+  function countyLabel(p){
+    return p.county || p.NAME || p.name || p.county_name_x || p.county_name_y || 'County';
+  }
+
+  const Manager = {
+    map: null,
+    canvas: null,
+    geojsonData: null,
+    layer: null,
+    mode: 'president', // 'president' | 'house' | 'none'
+    _ready: false,
+
+    ensureMap(){
+      if (this.map && this.canvas) return true;
+      // Try common globals
+      const cand = (window.map || window._map || window.MAP || null);
+      if (cand && typeof cand.addLayer === 'function') {
+        this.map = cand;
+        this.canvas = Lref.canvas({ padding: 0.5 });
+        return true;
+      }
+      // Attempt to detect via existing Leaflet maps
+      if (Lref && Lref.map && Lref._leaflet_id) {
+        // no-op; not reliable
+      }
+      return false;
+    },
+
+    setMode(newMode){
+      if (!newMode) return;
+      if (newMode !== 'president' && newMode !== 'house' && newMode !== 'none') return;
+      this.mode = newMode;
+      if (!this.layer) return;
+      if (newMode === 'none') {
+        // District View: remove counties
+        try { this.map && this.map.removeLayer(this.layer); } catch(e){}
+        return;
+      }
+      // Ensure layer is on the map
+      if (this.map && !this.map.hasLayer(this.layer)) {
+        try { this.layer.addTo(this.map); } catch(e){}
+      }
+      this.refresh();
+    },
+
+    styleFor(feature){
+      const p = feature && feature.properties || {};
+      let fill;
+      if (this.mode === 'president') {
+        fill = p.color_2020_pres || p.color || '#999';
+      } else { // 'house'
+        fill = p.color_2022_house || p.color || '#999';
+      }
+      return { color: '#111', weight: 0.5, fillOpacity: 0.65, fillColor: String(fill) };
+    },
+
+    tooltipFor(feature){
+      const p = feature && feature.properties || {};
+      const label = countyLabel(p);
+      let raw;
+      if (this.mode === 'president') raw = p.margin_pct_2020_pres;
+      else if (this.mode === 'house') raw = p.margin_pct_2022_house;
+      let txt = label;
+      const n = normToPercent(raw);
+      if (Number.isFinite(n)) {
+        const pct = Math.round(Math.abs(n) * 10) / 10;
+        txt += ' — Two-party margin: ' + pct.toFixed(1) + '%';
+      }
+      return txt;
+    },
+
+    buildLayer(){
+      if (!this.geojsonData || !this.ensureMap()) return;
+      if (this.layer) return this.layer;
+      this.layer = Lref.geoJSON(this.geojsonData, {
+        renderer: this.canvas,
+        style: (f)=>this.styleFor(f),
+        onEachFeature: (f,l)=>{
+          l.bindTooltip(this.tooltipFor(f), { sticky: true });
+        }
+      });
+      if (this.mode !== 'none') {
+        try { this.layer.addTo(this.map); } catch(e){}
+      }
+      this._ready = true;
+      return this.layer;
+    },
+
+    refresh(){
+      if (!this.layer) return;
+      try {
+        this.layer.setStyle((f)=>this.styleFor(f));
+        // Rebind tooltips to reflect mode-specific text
+        this.layer.eachLayer(l => {
+          if (!l || !l.feature) return;
+          l.bindTooltip(this.tooltipFor(l.feature), { sticky: true });
+        });
+        if (this.layer.redraw) this.layer.redraw();
+      } catch(e){ /* ignore */ }
+    }
+  };
+
+  // Expose for debugging
+  window.__CountyOverlayManager = Manager;
+
+  // Intercept L.geoJSON to capture county dataset and return the managed layer to prevent duplicates
+  const origGeoJSON = Lref.geoJSON;
+  Lref.geoJSON = function(geojson, opts){
+    try{
+      if (geojson && looksLikeCountyGeoJSON(geojson)) {
+        // First time we see it, store raw GeoJSON
+        if (!Manager.geojsonData) {
+          Manager.geojsonData = geojson;
+          // Try to detect the map if not set yet
+          Manager.ensureMap();
+          Manager.buildLayer();
+        }
+        // If we're asked to create the county layer again, return the one true layer.
+        // Also, apply visibility: if current UI is district view, the layer may be hidden.
+        return Manager.layer || origGeoJSON.call(this, geojson, opts);
+      }
+    }catch(e){
+      // fallthrough to original
+    }
+    return origGeoJSON.call(this, geojson, opts);
+  };
+
+  // Tab switching: listen for clicks on elements whose text matches our views.
+  function onClick(e){
+    try{
+      const el = e.target && e.target.closest && e.target.closest('a,button,[role=tab],[data-tab],.tab');
+      if (!el) return;
+      const t = (el.textContent || '').trim().toLowerCase();
+      if (t.includes('president')) {
+        Manager.setMode('president');
+      } else if (t.includes('house')) {
+        Manager.setMode('house');
+      } else if (t.includes('district view')) {
+        Manager.setMode('none');
+      }
+    }catch(_){}
+  }
+  document.addEventListener('click', onClick, true);
+
+  // Also watch for aria-selected tab changes (e.g., frameworks updating without a click on the label)
+  const mo = new MutationObserver((muts)=>{
+    for (const m of muts){
+      if (m.type === 'attributes' && m.target && m.target.getAttribute){
+        const sel = m.target.getAttribute('aria-selected');
+        if (sel === 'true'){
+          const t = (m.target.textContent || '').trim().toLowerCase();
+          if (t.includes('president')) Manager.setMode('president');
+          else if (t.includes('house')) Manager.setMode('house');
+          else if (t.includes('district view')) Manager.setMode('none');
+        }
+      }
+    }
+  });
+  mo.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['aria-selected'] });
+
+  // Lazy init if map appears later
+  let tries = 0;
+  (function waitMap(){
+    tries++;
+    if (Manager.ensureMap() && Manager.geojsonData && !Manager._ready) {
+      Manager.buildLayer();
+    }
+    if (tries < 400) requestAnimationFrame(waitMap);
+  })();
+
+})();
