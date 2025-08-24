@@ -2,6 +2,104 @@
 (function(){
   "use strict";
 
+// --- Advanced: explicit map section + renderer ---
+function renderAdvDistrictMapInset(){
+  try {
+var noteEl = document.getElementById('district-map-note-adv');
+          var mapEl  = document.getElementById('adv-district-map');
+          if (!mapEl || typeof L === 'undefined') return;
+
+          function pad2(n){ n=String(n||''); return n.length<2 ? ('0'+n) : n; }
+          var STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09","DE":"10","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17","IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24","MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31","NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38","OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46","TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54","WI":"55","WY":"56","DC":"11","PR":"72"};
+
+          var id = data && data.identity || {};
+          var state = (id.state || '').toUpperCase();
+          var district = (id.district || '').toString().toUpperCase();
+          if (!state) { if (noteEl) noteEl.textContent = 'Map unavailable (missing state)'; return; }
+          if (district === 'AL' || district === 'AT-LARGE' || district === '0' || district === '00') district = '00';
+          if (/^\d+$/.test(district)) district = pad2(district);
+
+          var stfp = STATE_FIPS[state];
+          if (!stfp) { if (noteEl) noteEl.textContent = 'Map unavailable (unknown state)'; return; }
+
+          var useStateOverlay = (!district || district === '00');
+var layerURL, where;
+if (useStateOverlay) {
+  layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/76"; // States
+  where = "STATE='" + stfp + "'";
+} else {
+  layerURL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2022/MapServer/50"; // 118th CDs
+  where = "STATE='" + stfp + "' AND CD118='" + district + "'";
+}
+var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*&returnGeometry=true&f=geojson";
+
+          // Initialize map
+          var map = L.map(mapEl, { scrollWheelZoom:false, dragging:true, touchZoom:true });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(map);
+
+          fetch(url, { cache:'force-cache' }).then(function(r){ return r.json(); }).then(function(geo){
+            try{
+              if (!geo || !geo.features || !geo.features.length) {
+                if (noteEl) noteEl.textContent = 'District boundary not found.';
+                return;
+              }
+              var layer = L.geoJSON(geo, {
+                style: { color: '#2563eb', weight: 2, fillOpacity: 0.10 }
+              }).addTo(map);
+              map.fitBounds(layer.getBounds(), { padding:[12,12] });
+              if (noteEl) {
+              var chamber = (id && id.chamber ? String(id.chamber).toLowerCase() : '');
+              var atLarge = (!district || district==='00');
+              if (chamber === 'senate' || atLarge) {
+                noteEl.textContent = state + ' (118th CD)';
+              } else {
+                noteEl.textContent = state + '-' + district + ' (118th CD)';
+              }
+            }
+            }catch(e){ if (noteEl) noteEl.textContent = 'Map error'; }
+          }).catch(function(){ if (noteEl) noteEl.textContent = 'Map unavailable (network)'; });
+} catch (e) { /* do nothing; map is optional */ }
+}
+
+
+function ensureAdvDistrictSection(){
+  try{
+    var advCard = document.getElementById('adv-card-district');
+    if(!advCard) return;
+    if(advCard.__advDistrictBuilt) return;
+
+    var titleEl = advCard.querySelector('.section-title');
+    if(titleEl){
+      var mapHTML = ''
+        + '<div id="adv-district-map-inset" style="margin-top:8px">'
+        + '  <div id="adv-district-map" style="height:180px; border-radius:12px; overflow:hidden; margin-top:6px;"></div>'
+        + '  <div id="district-map-note-adv" class="muted">Loading district map...</div>'
+        + '</div>';
+      titleEl.insertAdjacentHTML('afterend', mapHTML);
+    }
+
+    function moveIfExists(id){
+      var el = document.getElementById(id);
+      if(el && el !== advCard){
+        advCard.appendChild(el);
+      }
+    }
+    moveIfExists('district-contact-btns');
+    moveIfExists('office-info-title');
+    moveIfExists('office-list');
+    moveIfExists('office-list-none');
+
+    advCard.__advDistrictBuilt = true;
+    try{ renderAdvDistrictMapInset(); }catch(e){}
+  }catch(e){}
+}
+
+var data;
+
+
 // --- tiny helper for "Show more / Show less" on a comma-separated line ---
 function _wireShowToggle(opts){
   var root = opts.root;
@@ -147,8 +245,8 @@ function _wireShowToggle(opts){
         + '  <div class="muted">Advanced campaign finance analysis will appear here.</div>'
         + '</section>'
         + '<section id="adv-card-district" class="card">'
-        + '  <div class="section-title">District and Office Information</div>'
-        + '  <div class="muted">Advanced district & office information will appear here.</div>'
+        + '  <div class="section-title">District and Contact Information</div>'
+        + '  <div class="muted">Advanced district & contact information will appear here.</div>'
         + '</section>';
       // Insert right after the header card
       header.insertAdjacentElement('afterend', adv);
@@ -163,7 +261,8 @@ function _wireShowToggle(opts){
     for (var i=0;i<cards.length;i++){
       var sec = cards[i];
       if (sec.id === 'headerCard') continue;
-      if (sec.closest('#advCards')) { sec.style.display = ''; }
+      if (sec.closest('#advCards')) { sec.style.display = '';   try{ ensureAdvDistrictSection(); renderAdvDistrictMapInset(); }catch(e){}
+}
       else { sec.style.display = 'none'; }
     }
   }
@@ -198,8 +297,10 @@ try{ ensureAdvancedVoteTabs(); }catch(e){}
 try{ ensureAdvancedVoteTabs(); }catch(e){}
 try{ ensureAdvancedVoteTabs(); }catch(e){}
 try{ ensureAdvancedVoteTabs(); }catch(e){}
-var data = results[0] || {}, yamlText = results[1] || '';
-      var id = data.identity || {};
+data = results[0] || {}; var yamlText = results[1] || '';
+      try{ ensureAdvDistrictSection(); }catch(e){}
+try{ renderAdvDistrictMapInset(); }catch(e){}
+var id = data.identity || {};
       var block = findBlockForBioguide(yamlText, bioguide);
       var displayName = extractNameFromBlock(block) || (id.name || '(Name unavailable)');
       var party = id.party || '';
