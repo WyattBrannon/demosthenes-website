@@ -541,23 +541,23 @@ var nameLine=document.createElement('div'); nameLine.className='name-line';
           subP.className = 'muted';
           subP.style.fontSize = '0.9rem';
           subP.style.textAlign = 'center';
-          var side = (dirParty === 'left' ? 'left' : (dirParty === 'right' ? 'right' : 'center'));
+          var side = (dirParty === 'left' ? 'To the left of ' : (dirParty === 'right' ? 'To the right of ' : 'center'));
           
             // Adjust text for <50%: flip side and use complement
             if (typeof pctParty === 'number') {
               var adjSide = side;
               var adjPct  = pctParty;
               if (pctParty < 50 && side !== 'center') {
-                adjSide = (side === 'left') ? 'right' : 'left';
+                adjSide = 'More moderate than ';
                 adjPct = 100 - pctParty;
               }
               subP.textContent = (side === 'center')
                 ? ('At the center of ' + pNoun)
-                : ('To the ' + adjSide + ' of ' + adjPct + '% of ' + pNoun);
+                : (adjSide + adjPct + '% of ' + pNoun);
             } else {
               subP.textContent = (side === 'center')
                 ? ('At the center of ' + pNoun)
-                : ('To the ' + side + ' of ' + pctParty + '% of ' + pNoun);
+                : (side + pctParty + '% of ' + pNoun);
             }
           firstDial.appendChild(subP);
         }
