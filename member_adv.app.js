@@ -3736,3 +3736,707 @@ try{
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true});
   else run();
 })();
+
+
+;(()=>{
+  if (typeof window==='undefined' || typeof document==='undefined') return;
+  if (window.__ADV_SIG_FIN_V3__) return; window.__ADV_SIG_FIN_V3__=true;
+
+  // ---------- Data helpers ----------
+  function pickFirstDefined() {
+    for (var i=0; i<arguments.length; i++) {
+      var v = arguments[i];
+      if (v !== undefined && v !== null) return v;
+    }
+    return undefined;
+  }
+  function getRootData(){
+    try{ if (typeof data !== 'undefined' && data) return data; }catch(_){}
+    if (Array.isArray(window.results) && window.results[0] && window.results[0].data) return window.results[0].data;
+    if (window.__memberData) return window.__memberData;
+    if (window.memberData) return window.memberData;
+    if (window.member) return window.member;
+    return null;
+  }
+  function deepFindArrays(obj, predicate, maxDepth){
+    var out = [];
+    function rec(o, depth){
+      if (!o || typeof o!=='object' || depth>maxDepth) return;
+      if (Array.isArray(o)){
+        try{ if (predicate(o)) out.push(o); }catch(_){}
+      } else {
+        for (var k in o){
+          if (!Object.prototype.hasOwnProperty.call(o,k)) continue;
+          var v = o[k];
+          if (v && typeof v === 'object') rec(v, depth+1);
+        }
+      }
+    }
+    rec(obj, 0);
+    return out;
+  }
+  function scoreBillsArray(arr){
+    if (!Array.isArray(arr) || arr.length===0) return -1;
+    var score = 0, seen = 0;
+    for (var i=0;i<Math.min(arr.length, 25); i++){
+      var it = arr[i] || {};
+      if (typeof it !== 'object') continue;
+      seen++;
+      if ('title' in it || 'shortTitle' in it) score += 3;
+      if ('introducedDate' in it) score += 2;
+      if ('number' in it || 'bill' in it) score += 2;
+      if ('cosponsors' in it) score += 1;
+      if ('policy_area' in it) score += 1;
+    }
+    return (seen>0 ? score : -1);
+  }
+  function findBillsArray(member){
+    var cand = pickFirstDefined(member && member.bills, member && member.bills_all, member && member.bills_recent, member && member.sponsored_bills);
+    if (Array.isArray(cand) && cand.length) return cand;
+    var arrays = deepFindArrays(member, function(a){
+      if (!Array.isArray(a) || a.length===0) return false;
+      var good = 0, test = Math.min(a.length, 5);
+      for (var i=0;i<test;i++){
+        var x = a[i] || {};
+        if (x && typeof x==='object' && ('introducedDate' in x || 'title' in x || 'number' in x || 'bill' in x)) good++;
+      }
+      return good>=2;
+    }, 3);
+    if (!arrays.length) return [];
+    arrays.sort(function(a,b){ return scoreBillsArray(b) - scoreBillsArray(a); });
+    return arrays[0];
+  }
+  function findFEC(member){
+    var fec = pickFirstDefined(member && member.fec, member && member.campaign_finance, member && member.finance, member && member.fec_current);
+    function looksGood(o){ return !!(o && (o.totals || o.top_contributors || o.top_organizations)); }
+    if (looksGood(fec)) return fec;
+    var found = null;
+    try{
+      var keys = Object.keys(member||{});
+      for (var i=0;i<keys.length;i++){
+        var v = member[keys[i]];
+        if (looksGood(v)) { found = v; break; }
+      }
+    }catch(_){}
+    return found;
+  }
+
+  // ---------- UI helpers ----------
+  function byId(id){ return document.getElementById(id); }
+  function ensureBody(cardId, bodyId){
+    var card = byId(cardId); if (!card) return null;
+    var title = card.querySelector('.section-title');
+    var body = card.querySelector('#'+bodyId);
+    if (!body){
+      body = document.createElement('div'); body.id = bodyId;
+      if (title) title.insertAdjacentElement('afterend', body); else card.appendChild(body);
+    }
+    return body;
+  }
+  function partyLetter(p){ p=String(p||'').toUpperCase(); return p[0]==='R'?'R':(p[0]==='D'?'D':'I'); }
+  function partyNoun(letter){ return letter==='R'?'Republicans':(letter==='D'?'Democrats':'Independents'); }
+  function partyColor(p){ return partyLetter(p)==='R'?'#dc2626':'#2563eb'; }
+  function renderDialCompat(container, valuePct, centerText, label, tooltip, strokeColor){
+    var size=120, stroke=12, r=(size/2)-stroke, C=2*Math.PI*r;
+    var pct=(valuePct==null||isNaN(valuePct))?0:Math.max(0,Math.min(100,Number(valuePct)));
+    var offset=C*(1-pct/100);
+    var wrap=document.createElement('div'); wrap.className='dial'; if(tooltip) wrap.title=tooltip;
+    var color=strokeColor||'#2563eb';
+    var svg = ''
+      + '<svg viewBox="0 0 '+size+' '+size+'" role="img" aria-label="'+(label||'')+'">'
+      +   '<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="'+stroke+'"></circle>'
+      +   '<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+stroke+'" stroke-linecap="round"'
+      +           ' stroke-dasharray="'+C+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+(size/2)+' '+(size/2)+')"></circle>'
+      +   '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="20" font-weight="800">'+centerText+'</text>'
+      + '</svg>';
+    var labelDiv = document.createElement('div'); labelDiv.className='label'; labelDiv.textContent=label||'';
+    wrap.innerHTML = svg; wrap.appendChild(labelDiv); container.appendChild(wrap);
+  }
+
+  // ---------- Signature Work ----------
+  var __sigworkBuilt = false;
+  function renderSignatureWork(){ if (__sigworkBuilt) return true;
+    var body = ensureBody('adv-card-sigwork', 'adv-sigwork-body'); if (!body) return false;
+    var member = getRootData(); if (!member) return false;
+    var billsAll = findBillsArray(member);
+    var ws = (member && member.work_statistics) || {};
+    var id = (member && member.identity) || {};
+    var pLetter = partyLetter(id.party);
+    var colorParty = partyColor(id.party);
+
+    if (!Array.isArray(billsAll) || billsAll.length===0) return false;
+
+    // clear placeholders
+    Array.from(body.parentElement.querySelectorAll('.muted')).forEach(function(n){
+      if ((n.textContent||'').toLowerCase().indexOf('advanced')===0) n.remove();
+    });
+    body.innerHTML='';
+
+    // dials
+    var dialsWrap = document.createElement('div'); dialsWrap.id='adv-sigwork-dials'; dialsWrap.className='grid two'; body.appendChild(dialsWrap);
+    function toNum(x){ var n=Number(x); return isNaN(n)?0:n; }
+    var total = toNum(ws.total_hr_sr);
+    var passed = toNum(ws.total_hr_sr_became_public_law);
+    var bipart = toNum(ws.total_hr_sr_bipartisan);
+    var pctPassed = total>0 ? (passed/total)*100 : NaN;
+    var pctBipart = total>0 ? (bipart/total)*100 : NaN;
+    var useDial = (typeof window.renderDial === 'function') ? window.renderDial : renderDialCompat;
+    useDial(dialsWrap, isNaN(pctPassed)?NaN:Math.round(pctPassed), String(passed), 'Bills Passed', 'HR+SR became law / Total HR+SR', colorParty);
+    useDial(dialsWrap, isNaN(pctBipart)?NaN:Math.round(pctBipart), String(bipart), 'Bipartisan Bills Sponsored', 'Bipartisan HR+SR / Total HR+SR', colorParty);
+
+    if (total>0){
+      var dials = dialsWrap.querySelectorAll('.dial');
+      if (dials.length>=2){
+        var dialPassed = dials[dials.length-2];
+        var dialBip = dials[dials.length-1];
+        var sub1 = document.createElement('div'); sub1.className='muted'; sub1.textContent = (isNaN(pctPassed)?'':(String(Math.round(pctPassed))+'% of bills sponsored passed')); dialPassed.appendChild(sub1);
+        var pEff = (typeof ws.passed_rate_percentile_party === 'number') ? ws.passed_rate_percentile_party : null;
+        if (pEff!=null){
+          var sub1b=document.createElement('div'); sub1b.className='muted';
+          var partyWord = partyNoun(pLetter);
+          sub1b.textContent = (pEff<50) ? ('Less effective than '+String(Math.round(100-pEff))+'% of '+partyWord) : ('More effective than '+String(Math.round(pEff))+'% of '+partyWord);
+          dialPassed.appendChild(sub1b);
+        }
+        var sub2=document.createElement('div'); sub2.className='muted'; sub2.textContent = (isNaN(pctBipart)?'':(String(Math.round(pctBipart))+'% of bills sponsored were bipartisan')); dialBip.appendChild(sub2);
+        var pBip = (typeof ws.bipartisan_rate_percentile_party === 'number') ? ws.bipartisan_rate_percentile_party : null;
+        if (pBip!=null){
+          var sub2b=document.createElement('div'); sub2b.className='muted';
+          var partyWord2 = partyNoun(pLetter);
+          sub2b.textContent = (pBip<50) ? ('Less bipartisan than '+String(Math.round(100-pBip))+'% of '+partyWord2) : ('More bipartisan than '+String(Math.round(pBip))+'% of '+partyWord2);
+          dialBip.appendChild(sub2b);
+        }
+      }
+    }
+
+    // sponsored bills list
+    billsAll.sort(function(a,b){
+      var ad=Date.parse(a && a.introducedDate || '')||0;
+      var bd=Date.parse(b && b.introducedDate || '')||0;
+      return bd - ad;
+    });
+    var policyAreas = Array.from(new Set(billsAll.map(function(b){ return String(b && b.policy_area || '').trim(); }).filter(Boolean))).sort();
+
+    
+    // --- Sponsored Bills list (Basic parity, self-contained) ---
+    // Title row with Filter button (right aligned)
+    var sbTitle = document.createElement('div'); 
+    sbTitle.className='section-title'; 
+    sbTitle.style.display='flex'; 
+    sbTitle.style.alignItems='center'; 
+    sbTitle.style.gap='8px'; 
+    sbTitle.textContent='Sponsored Bills';
+    var filterBtn = document.createElement('button'); 
+    filterBtn.className='btn'; 
+    filterBtn.textContent='Filter'; 
+    filterBtn.style.marginLeft='auto'; 
+    sbTitle.appendChild(filterBtn);
+body.appendChild(sbTitle);
+
+    // Build list container with Basic's id/class
+    var billsWrap = document.createElement('div'); 
+    billsWrap.id='sponsored-bills'; 
+    billsWrap.className='stack'; 
+    body.appendChild(billsWrap);
+    // Compute unique policy areas (skip blanks), sorted
+    var policyAreas = Array.from(
+      new Set(
+        billsAll.map(function(b){ return String(b && b.policy_area || '').trim(); }).filter(function(s){ return !!s; })
+      )
+    ).sort();
+
+    // Popover for filter
+    var pop = document.createElement('div'); 
+    pop.style.position='fixed'; 
+    pop.style.zIndex='10000'; 
+    pop.style.background='#fff'; 
+    pop.style.border='1px solid var(--border)'; 
+    pop.style.borderRadius='12px'; 
+    pop.style.boxShadow='0 8px 20px rgba(0,0,0,.08)'; 
+    pop.style.padding='10px'; 
+    pop.style.minWidth='260px'; 
+    pop.style.maxWidth='min(96vw, 420px)'; 
+    pop.style.display='none'; 
+    document.body.appendChild(pop);
+
+    // Popover contents
+    pop.innerHTML = ''; 
+    var title = document.createElement('div'); 
+    title.style.fontWeight='700'; 
+    title.style.marginBottom='6px'; 
+    title.textContent='Filter by policy area'; 
+    pop.appendChild(title);
+
+    var search = null, chipWrap = null;
+    if (true) {
+      search = document.createElement('input'); 
+      search.type='search'; 
+      search.placeholder='Search areas…'; 
+      search.style.width='100%'; 
+      search.style.padding='8px 10px'; 
+      search.style.border='1px solid var(--border)'; 
+      search.style.borderRadius='8px'; 
+      search.style.marginBottom='8px'; 
+      pop.appendChild(search);
+
+      chipWrap = document.createElement('div'); 
+      chipWrap.style.display='flex'; 
+      chipWrap.style.flexWrap='wrap'; 
+      chipWrap.style.gap='8px'; 
+      chipWrap.style.maxHeight='240px'; 
+      chipWrap.style.overflow='auto'; 
+      pop.appendChild(chipWrap);
+    }
+
+    var activePolicy = null; // null = no filter
+    function makeChip(label, isActive){
+      var c = document.createElement('button');
+      c.type = 'button';
+      c.className = 'pill N';
+      c.style.cursor = 'pointer';
+      c.style.borderWidth = '1px';
+      c.style.userSelect = 'none';
+      c.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      c.textContent = (isActive ? '✓ ' : '') + label;
+      if (isActive) {
+        c.style.background = '#e5e7eb';
+        c.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,.08)';
+        c.style.fontWeight = '700';
+        c.style.outline = '2px solid rgba(0,0,0,.12)';
+      } else {
+        // reset potential previous styles when re-rendering
+        c.style.background = '';
+        c.style.boxShadow = '';
+        c.style.fontWeight = '';
+        c.style.outline = '';
+      }
+      c.addEventListener('click', function(e){
+        e.preventDefault();
+        if (label === '(All)') {
+          activePolicy = null;
+        } else {
+          activePolicy = label;
+        }
+        renderSponsoredBills();
+        // Re-render chips so emphasis moves to the selected one
+        try { renderChips(search ? search.value : ''); } catch(_) {}
+      });
+      return c;
+    }
+    function renderChips(q){ 
+      if (!chipWrap) return;
+      chipWrap.innerHTML=''; 
+      var qry = (q||'').toLowerCase().trim();
+      chipWrap.appendChild(makeChip('(All)', activePolicy===null));
+      policyAreas.filter(function(a){ return !qry || a.toLowerCase().indexOf(qry)!==-1; })
+                 .forEach(function(a){ chipWrap.appendChild(makeChip(a, activePolicy===a)); });
+    }
+    function showPop(btn){ var r=btn.getBoundingClientRect(); pop.style.left=r.left+'px'; pop.style.top=(r.bottom+6)+'px'; pop.style.display='block'; }
+    function hidePop(){ pop.style.display='none'; }
+
+    filterBtn.addEventListener('click', function(e){ 
+      e.preventDefault(); 
+      
+      if (pop.style.display==='block') hidePop(); 
+      else { renderChips(''); showPop(filterBtn); } 
+    });
+    if (search){ search.addEventListener('input', function(){ renderChips(search.value); }); }
+
+    // Expand/collapse state
+    var expandedSB = false;
+    var oldCtr=document.getElementById('sponsored-bills-ctr'); if(oldCtr&&oldCtr.closest&&oldCtr.closest('#advCards')) oldCtr.remove();
+var ctrl=document.createElement('div'); ctrl.id='sponsored-bills-ctr'; ctrl.style.paddingTop='8px';
+var btn=document.createElement('button'); btn.className='btn'; btn.textContent= expandedSB ? 'Show less' : 'Show more';
+btn.addEventListener('click', function(e){ e.preventDefault(); expandedSB=!expandedSB; btn.textContent = expandedSB ? 'Show less' : 'Show more'; renderSponsoredBills(); });
+ctrl.appendChild(btn);
+if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctrl, billsWrap.nextSibling);
+
+
+    function fmtType(bt){
+      bt = String(bt||'').toLowerCase();
+      if (bt==='hr') return 'H.R.';
+      if (bt==='sr') return 'S.R.';
+      if (bt==='s') return 'S.';
+      if (bt==='hres') return 'H.Res.';
+      if (bt==='sres') return 'S.Res.';
+      return bt.toUpperCase();
+    }
+
+    function renderSponsoredBills(){
+      // keep ctrl visibility in sync
+      ctrl.style.display = 'block';
+      billsWrap.innerHTML='';
+      var list = billsAll.filter(function(b){ 
+        if (!activePolicy) return true; 
+        var pa = String(b && b.policy_area || '').trim(); 
+        return pa === activePolicy; 
+      });
+
+      var maxDefault = 3;
+      var maxExpanded = 10;
+      var show = list.slice(0, expandedSB ? Math.min(maxExpanded, list.length) : Math.min(maxDefault, list.length));
+      // Show control only when there are more than default items
+      if (list.length <= maxDefault){ ctrl.style.display='none'; expandedSB=false; btn.textContent='Show more'; btn.setAttribute('aria-expanded','false'); }
+      else { ctrl.style.display='block'; }
+      show.forEach(function(b){
+        var type = fmtType(b && b.billType);
+        var num  = String(b && (b.number || b.bill) || '');
+        var date = String(b && b.introducedDate || '');
+        var title= String(b && (b.title || b.title_raw || b.shortTitle) || '');
+        var latest = '';
+        if (b && b.latestAction){
+          latest = typeof b.latestAction === 'string' ? b.latestAction : (b.latestAction.text || '');
+        }
+        var policyArea = String(b && b.policy_area || '').trim();
+        var url = (b && (b.congressdotgovUrl || b.congressdotgov_url)) || '';
+
+        var row = document.createElement('div');
+        row.className='stack';
+        row.style.borderTop='1px solid var(--border)';
+        row.style.paddingTop='8px';
+
+        // First line: TYPE NUM • DATE (+ pills)
+        var head = document.createElement('div');
+        var strong = document.createElement('strong');
+        if (url){
+          strong.textContent = type + (num ? (' ' + num) : '');
+        } else {
+          strong.textContent = type + (num ? (' ' + num) : '');
+        }
+        head.appendChild(strong);
+        if (date){
+          head.appendChild(document.createTextNode(' • '));
+          var span = document.createElement('span'); span.className='muted';
+          try { span.textContent = new Date(date).toLocaleDateString(); } catch(e){ span.textContent = String(date); }
+          head.appendChild(span);
+        }
+        if (b && b.bipartisan === true){
+          head.appendChild(document.createTextNode(' '));
+          var bp = document.createElement('span'); 
+          bp.className='pill P'; 
+          bp.textContent = 'Bipartisan';
+          head.appendChild(bp);
+        }
+        row.appendChild(head);
+
+        // Second line: Title
+        if (title){
+          var line = document.createElement('div');
+          line.style.textDecoration = 'none';
+          line.textContent = title;
+          row.appendChild(line);
+        }
+
+        // Third line: latest action
+        if (latest){
+          var meta = document.createElement('div');
+          meta.className='muted';
+          meta.textContent = 'Latest action: ' + latest;
+          row.appendChild(meta);
+        }
+
+        // Fourth: Policy Area (neutral pill)
+        if (policyArea){
+          var subj = document.createElement('div');
+          var pill = document.createElement('span');
+          pill.className='pill N';
+          pill.textContent = policyArea;
+          subj.appendChild(pill);
+          row.appendChild(subj);
+        }
+
+        billsWrap.appendChild(row);
+      });
+
+      if (list.length===0){
+        var none = document.createElement('div'); none.className='muted'; none.textContent='No sponsored bills.'; billsWrap.appendChild(none);
+      }
+    }
+
+    renderSponsoredBills(); __sigworkBuilt = true;
+renderBills();
+    return true;
+  }
+
+  // ---------- Campaign Finance Overview ----------
+  function renderFinance(){
+  // Ensure body + containers under the Advanced card
+  var bodyNode = ensureBody('adv-card-finance', 'adv-finance-body'); if (!bodyNode) return false;
+  // Remove placeholder text that says "Advanced ... will appear here."
+  Array.from(bodyNode.parentElement.querySelectorAll('.muted')).forEach(function(n){
+    var t=(n.textContent||'').toLowerCase();
+    if (t.indexOf('advanced')===0) n.remove();
+  });
+  // Create our inner containers if not present
+  var none = document.getElementById('adv-finance-none');
+  if (!none) { none = document.createElement('div'); none.id='adv-finance-none'; none.className='muted'; none.textContent='No information available.'; bodyNode.appendChild(none); }
+  var content = document.getElementById('adv-finance-content');
+  if (!content) { content = document.createElement('div'); content.id='adv-finance-content'; bodyNode.appendChild(content); }
+
+  // Use the exact same rendering logic as Basic mode, pointed at our Advanced containers
+  try {
+    var data = getRootData();
+    
+
+        try {
+    
+          var financeNone = document.getElementById('adv-finance-none');
+          var financeContent = document.getElementById('adv-finance-content');
+          var fec = findFEC(data);
+          var hasTotals = !!(fec && fec.totals);
+          var hasTop = !!(fec && fec.top_contributors);
+          var hasData = hasTotals || hasTop;
+
+          if (financeNone) financeNone.style.display = hasData ? 'none' : '';
+          if (!hasData) { if (financeContent) financeContent.innerHTML = ''; return; }
+
+          function num(x){ if (x==null) return 0; var s=(''+x).replace(/[\$,]/g,''); var n=parseFloat(s); return isNaN(n)?0:n; }
+          function pickTotals(obj){
+            if (!obj || typeof obj !== 'object') return null;
+            var keys = Object.keys(obj);
+            var need = ['individual_itemized_contributions','individual_unitemized_contributions','other_political_committee_contributions','political_party_committee_contributions','candidate_contribution','receipts'];
+            var hasOne = need.some(function(k){ return Object.prototype.hasOwnProperty.call(obj,k); });
+            if (hasOne) return obj;
+            var first = (keys.length ? obj[keys[0]] : null);
+            return (first && typeof first === 'object') ? first : null;
+          }
+          function fmtMoney(n){ return '$' + Math.round(n).toLocaleString(); }
+
+          if (financeContent) financeContent.innerHTML = '';
+
+          // ----- PIE CHART -----
+          var totalsObj = hasTotals ? pickTotals(fec.totals) : null;
+          var chartSum = 0;
+          if (totalsObj) {
+            var parts = [
+
+              { label: 'Small-dollar individual donations', value: num(totalsObj['individual_unitemized_contributions']) },
+              { label: 'Large-dollar individual donations', value: num(totalsObj['individual_itemized_contributions']) },
+              { label: 'Committee donations', value: num(totalsObj['other_political_committee_contributions']) + num(totalsObj['political_party_committee_contributions']) },
+              { label: 'Self-funded donations', value: num(totalsObj['candidate_contribution']) },
+              { label: 'Other donations', value: num(totalsObj['other_receipts']) }
+            
+            ];
+            chartSum = parts.reduce(function(a,b){ return a + (b.value||0); }, 0);
+            if (chartSum > 0) {
+              var tip = document.getElementById('finance-tooltip');
+              if (!tip){
+                tip = document.createElement('div');
+                tip.id = 'finance-tooltip';
+                tip.style.position = 'fixed'; tip.style.pointerEvents = 'none'; tip.style.zIndex = '9999';
+                tip.style.background = 'rgba(17,24,39,0.92)'; tip.style.color = '#fff';
+                tip.style.padding = '8px 10px'; tip.style.borderRadius = '8px';
+                tip.style.fontSize = '12px'; tip.style.lineHeight = '1.2';
+                tip.style.transform = 'translate(-50%, -120%)'; tip.style.opacity = '0';
+                tip.style.transition = 'opacity .12s ease';
+                document.body.appendChild(tip);
+              }
+              function showTip(x,y, html){ tip.innerHTML = html; tip.style.left = x+'px'; tip.style.top = y+'px'; tip.style.opacity='1'; }
+              function hideTip(){ tip.style.opacity = '0'; }
+
+              var W=160, H=160, R=58, CX=W/2, CY=H/2;
+              var C = 2*Math.PI*R, COLORS=['#0ea5e9','#f97316','#22c55e','#a855f7','#eab308'], STROKE=22;
+
+              var svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+              svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.setAttribute('width', W); svg.setAttribute('height', H);
+              svg.style.maxWidth = '170px'; svg.style.display='block';
+
+              var bg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+              bg.setAttribute('cx', CX); bg.setAttribute('cy', CY); bg.setAttribute('r', R);
+              bg.setAttribute('fill','none'); bg.setAttribute('stroke','#e5e7eb'); bg.setAttribute('stroke-width', STROKE);
+              svg.appendChild(bg);
+
+              var offset=0;
+              parts.forEach(function(p, idx){
+                var frac = (p.value||0) / chartSum; if (frac <= 0) return;
+                var seg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+                seg.setAttribute('cx', CX); seg.setAttribute('cy', CY); seg.setAttribute('r', R);
+                seg.setAttribute('fill','none'); seg.setAttribute('stroke', COLORS[idx % COLORS.length]);
+                seg.setAttribute('stroke-width', STROKE);
+                seg.setAttribute('stroke-dasharray', (frac*C) + ' ' + (C - frac*C));
+                seg.setAttribute('stroke-dashoffset', -offset*C);
+                seg.setAttribute('transform','rotate(-90 '+CX+' '+CY+')');
+                seg.addEventListener('mouseenter', function(e){ var percent=Math.round(frac*100); showTip(e.clientX,e.clientY,'<b>'+p.label+'</b><br>'+fmtMoney(p.value)+' ('+percent+'%)'); });
+                seg.addEventListener('mousemove', function(e){ showTip(e.clientX,e.clientY, tip.innerHTML); });
+                seg.addEventListener('mouseleave', hideTip);
+                seg.addEventListener('touchstart', function(e){ var tchg=(e.touches&&e.touches[0])||null; var percent=Math.round(frac*100); if(tchg) showTip(tchg.clientX,tchg.clientY,'<b>'+p.label+'</b><br>'+fmtMoney(p.value)+' ('+percent+'%)'); }, {passive:true});
+                seg.addEventListener('touchend', hideTip);
+                svg.appendChild(seg); offset += frac;
+              });
+
+              var legend = document.createElement('div');
+              legend.style.display='grid'; legend.style.gridTemplateColumns='1fr'; legend.style.gap='6px';
+              legend.style.margin='0'; legend.style.padding='0 8px'; legend.style.textAlign='center';
+              parts.forEach(function(p, idx){
+                var row=document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.justifyContent='center';
+                var sw=document.createElement('span'); sw.style.display='inline-block'; sw.style.width='12px'; sw.style.height='12px'; sw.style.borderRadius='3px'; sw.style.background=COLORS[idx%COLORS.length];
+                var lbl=document.createElement('span'); lbl.textContent=p.label;
+                row.appendChild(sw); row.appendChild(lbl); legend.appendChild(row);
+              });
+
+              var wrap=document.createElement('div'); wrap.style.display='inline-flex'; wrap.style.justifyContent='center'; wrap.style.alignItems='center'; wrap.style.gap='16px'; wrap.style.flexWrap='wrap';
+              wrap.appendChild(svg); wrap.appendChild(legend);
+              var center=document.createElement('div'); center.style.width='100%'; center.style.textAlign='center'; center.appendChild(wrap);
+              financeContent.appendChild(center);
+            }
+          }
+
+          // ----- Summary line -----
+          var id = data.identity || {};
+          var cname = (id && (id.name || id.display_name || id.official_full || id.full || (id.first&&id.last&&(id.first+' '+id.last)) || (id.firstname&&id.lastname&&(id.firstname+' '+id.lastname)))) || (id && id.bioguide) || 'This member';
+          var receiptsVal = num(fec && (fec.receipts || (totalsObj && totalsObj.receipts))); if (!receiptsVal && chartSum) receiptsVal = chartSum;
+          var summary = document.createElement('div'); summary.style.marginTop='8px'; summary.style.fontSize='0.95rem'; summary.style.textAlign='center';
+          summary.textContent = cname + ' has raised ' + fmtMoney(receiptsVal) + ' this cycle thus far.';
+          financeContent.appendChild(summary);
+
+          // ----- Major Committee Donations (with toggle styled like Key Votes) -----
+          var nextTitle = document.createElement('div'); nextTitle.className = 'section-title'; nextTitle.style.marginTop='12px'; nextTitle.textContent='Major Committee Donations';
+          financeContent.appendChild(nextTitle);
+
+          var pacs = (((fec||{}).top_contributors||{}).top_contributors||{}).pacs || [];
+          if (Array.isArray(pacs) && pacs.length){
+            pacs.sort(function(a,b){ return num((b&&b.total)) - num((a&&a.total)); });
+
+            var listWrap = document.createElement('div');
+            listWrap.id = 'committee-list-wrap';
+
+            var expanded = false;
+            function renderPacs(){
+              listWrap.innerHTML = '';
+              var limit = expanded ? Math.min(10, pacs.length) : Math.min(3, pacs.length);
+              var slice = pacs.slice(0, limit);
+              slice.forEach(function(p){
+                var name = (p && (p.name || p.committee_name)) || (p && p.committee_id) || 'Unknown committee';
+                var dollars = fmtMoney(num(p && p.total));
+                var row = document.createElement('div');
+                row.className = 'stack';
+                row.style.borderTop = '1px solid var(--border)';
+                row.style.paddingTop = '10px';
+                row.style.paddingBottom = '10px';
+                row.style.lineHeight = '1.35';
+                var head = document.createElement('div');
+                var strong = document.createElement('strong'); strong.textContent = String(name); head.appendChild(strong);
+                var sep = document.createTextNode(' \u2022 ');
+                head.appendChild(sep);
+                var amt = document.createElement('span'); amt.textContent = dollars; head.appendChild(amt);
+                row.appendChild(head);
+                listWrap.appendChild(row);
+              });
+
+              ctr1.innerHTML = '';
+              if (pacs.length > 3){
+                var btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.textContent = expanded ? 'Show less' : 'Show more';
+                btn.addEventListener('click', function(e){ e.preventDefault(); expanded = !expanded; renderPacs(); });
+                ctr1.appendChild(btn);
+              }
+            }
+
+            var ctr1 = document.createElement('div');
+            ctr1.style.paddingTop = '8px';
+
+            renderPacs();
+            financeContent.appendChild(listWrap);
+            financeContent.appendChild(ctr1);
+          } else {
+            var none = document.createElement('div'); none.className='muted'; none.style.textAlign='left'; none.textContent='No committee donations available.';
+            financeContent.appendChild(none);
+          }
+
+          // ----- Major Employers of Donors (with toggle styled like Key Votes) -----
+          var nextTitle2 = document.createElement('div'); nextTitle2.className = 'section-title'; nextTitle2.style.marginTop='12px'; nextTitle2.textContent='Major Employers of Donors';
+          financeContent.appendChild(nextTitle2);
+
+          var orgs = (((fec||{}).top_contributors||{}).top_contributors||{}).orgs || [];
+          if (Array.isArray(orgs) && orgs.length){
+            orgs.sort(function(a,b){ return num((b&&b.total)) - num((a&&a.total)); });
+
+            var listWrap2 = document.createElement('div');
+            listWrap2.id = 'employer-list-wrap';
+
+            var expanded2 = false;
+            function renderOrgs(){
+              listWrap2.innerHTML = '';
+              var limit = expanded2 ? Math.min(10, orgs.length) : Math.min(3, orgs.length);
+              var slice = orgs.slice(0, limit);
+              slice.forEach(function(o){
+                var name = (o && (o.employer || o.name)) || 'Unknown employer';
+                var dollars = fmtMoney(num(o && o.total));
+                var row = document.createElement('div');
+                row.className = 'stack';
+                row.style.borderTop = '1px solid var(--border)';
+                row.style.paddingTop = '10px';
+                row.style.paddingBottom = '10px';
+                row.style.lineHeight = '1.35';
+                var head = document.createElement('div');
+                var strong = document.createElement('strong'); strong.textContent = String(name); head.appendChild(strong);
+                var sep = document.createTextNode(' \u2022 ');
+                head.appendChild(sep);
+                var amt = document.createElement('span'); amt.textContent = dollars; head.appendChild(amt);
+                row.appendChild(head);
+                listWrap2.appendChild(row);
+              });
+
+              ctr2.innerHTML = '';
+              if (orgs.length > 3){
+                var btn2 = document.createElement('button');
+                btn2.className = 'btn';
+                btn2.textContent = expanded2 ? 'Show less' : 'Show more';
+                btn2.addEventListener('click', function(e){ e.preventDefault(); expanded2 = !expanded2; renderOrgs(); });
+                ctr2.appendChild(btn2);
+              }
+            }
+
+            var ctr2 = document.createElement('div');
+            ctr2.style.paddingTop = '8px';
+
+            renderOrgs();
+            financeContent.appendChild(listWrap2);
+            financeContent.appendChild(ctr2);
+          } else {
+            var none2 = document.createElement('div'); none2.className='muted'; none2.style.textAlign='left'; none2.textContent='No employer donations available.';
+            financeContent.appendChild(none2);
+          }
+
+          // Append data source footer to Campaign Finance card (once)
+          try {
+    
+            var financeCard = document.getElementById('adv-card-finance');
+            if (financeCard && !financeCard.querySelector('.data-note-finance')) {
+              var f3 = document.createElement('div');
+              f3.className = 'muted data-note-finance';
+              f3.style.marginTop = '10px';
+              f3.style.textAlign = 'left';
+              f3.textContent = 'Data from FEC.gov • Updated Quarterly';
+              financeCard.appendChild(f3);
+            }
+          } catch(e) { /* ignore */ }
+
+        } catch (e) {
+          if (window && window.console) console.warn('Finance render error:', e);
+        }
+      
+  } catch(e){ /* non-fatal */ }
+  return true;
+}
+
+  // ---------- Scheduler ----------
+  (function run(){
+    var attempts = 0;
+    function tick(){
+      var ok1 = renderSignatureWork();
+      var ok2 = renderFinance();
+      if (ok1 && ok2) return;
+      if (++attempts > 300) return;
+      requestAnimationFrame(tick);
+    }
+    tick();
+    window.addEventListener('hashchange', function(){ setTimeout(function(){ attempts=0; tick(); }, 30); });
+    var adv = document.getElementById('advCards');
+    if (adv && !adv.__sigfinObs){
+      var mo = new MutationObserver(function(){ setTimeout(function(){ attempts=0; tick(); }, 20); });
+      mo.observe(adv, {childList:true, subtree:true});
+      adv.__sigfinObs = mo;
+    }
+  })();
+})();
