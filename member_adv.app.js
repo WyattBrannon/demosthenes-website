@@ -2933,3 +2933,292 @@ try{
   })();
 
 })();
+
+
+;(()=>{
+  // Advanced Voting Record footer — exact markup, appended at the very end of the card.
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvVoteviewFooterInstalled__) return;
+  window.__AdvVoteviewFooterInstalled__ = true;
+
+  const TEXT = 'Data from Voteview.com \u2022 Updated Weekly';
+
+  function findAdvVotingCard(){
+    const adv = document.getElementById('advCards');
+    if (!adv) return null;
+    const card = adv.querySelector('#adv-card-voting.card, #adv-card-voting');
+    return card || null;
+  }
+
+  function ensureFooterAtEnd(card){
+    if (!card) return;
+    // Remove any non-advanced duplicates
+    document.querySelectorAll('.data-note-votes').forEach(el => {
+      if (!el.closest('#advCards')) el.remove();
+    });
+    // Create or reuse the exact footer element
+    let foot = card.querySelector(':scope > .data-note-votes');
+    if (!foot){
+      foot = document.createElement('div');
+      foot.className = 'muted data-note-votes';
+      foot.style.marginTop = '10px';
+      foot.style.textAlign = 'left';
+      foot.textContent = TEXT;
+    } else {
+      // Ensure exact class/text/style
+      foot.className = 'muted data-note-votes';
+      foot.style.marginTop = '10px';
+      foot.style.textAlign = 'left';
+      if (foot.textContent !== TEXT) foot.textContent = TEXT;
+    }
+    // Keep it as the final child of the card
+    if (foot.parentElement !== card || foot !== card.lastElementChild){
+      card.appendChild(foot);
+    }
+  }
+
+  function run(){
+    const card = findAdvVotingCard();
+    if (card){
+      ensureFooterAtEnd(card);
+      // Watch that single card for children being added; keep footer last
+      if (!card.__advFooterObserver){
+        const mo = new MutationObserver(() => ensureFooterAtEnd(card));
+        mo.observe(card, { childList: true });
+        card.__advFooterObserver = mo;
+      }
+    }
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', run, { once:true });
+  } else {
+    run();
+  }
+
+  // In case #advCards is created after load, watch for it
+  const moDoc = new MutationObserver(() => {
+    const adv = document.getElementById('advCards');
+    if (adv){
+      run();
+      // Observe #advCards for card mutations too
+      const mo = new MutationObserver(run);
+      mo.observe(adv, { childList: true, subtree: true });
+      moDoc.disconnect();
+    }
+  });
+  moDoc.observe(document.documentElement, { childList: true, subtree: true });
+})();
+
+
+;(()=>{
+  // Increase all Leaflet map heights by 50% (idempotent, all tabs).
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvMapHeight15__) return;
+  window.__AdvMapHeight15__ = true;
+
+  function targetHeightPx(el){
+    // Base height measured once per element
+    const ds = el.dataset;
+    if (!ds.advBaseHeightPx){
+      let base = 0;
+      const cs = getComputedStyle(el);
+      const csH = parseFloat(cs.height) || 0;
+      const rectH = el.getBoundingClientRect().height || 0;
+      base = Math.max(csH, rectH);
+      // Reasonable fallback if collapsed or zero
+      if (!base || base < 80) base = 300;
+      ds.advBaseHeightPx = String(Math.round(base));
+    }
+    const basePx = parseFloat(ds.advBaseHeightPx) || 300;
+    return Math.round(basePx * 1.5);
+  }
+
+  function bumpAll(){
+    const maps = document.querySelectorAll('.leaflet-container');
+    let changed = 0;
+    maps.forEach(el => {
+      try{
+        const tgt = targetHeightPx(el);
+        const cur = parseFloat((getComputedStyle(el).height || '0').replace('px','')) || 0;
+        if (Math.abs(cur - tgt) > 1){
+          el.style.height = tgt + 'px';
+          el.style.minHeight = tgt + 'px';
+          changed++;
+        }
+      }catch(_){}
+    });
+    if (changed){
+      // Nudge Leaflet to recalc sizes
+      requestAnimationFrame(()=>{
+        try{
+          if (window.map && typeof window.map.invalidateSize === 'function'){
+            window.map.invalidateSize(true);
+          }
+        }catch(_){}
+        try{ window.dispatchEvent(new Event('resize')); }catch(_){}
+      });
+    }
+  }
+
+  function run(){
+    bumpAll();
+    // run again shortly in case layout sizes settle
+    setTimeout(bumpAll, 80);
+    setTimeout(bumpAll, 160);
+    requestAnimationFrame(bumpAll);
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', run, { once:true });
+  } else {
+    run();
+  }
+
+  // Observe DOM for tab/view changes
+  const mo = new MutationObserver((muts)=>{
+    for (const m of muts){
+      if (m.type === 'childList' && m.addedNodes && m.addedNodes.length){
+        run();
+        break;
+      }
+      if (m.type === 'attributes' && (m.attributeName === 'style' || m.attributeName === 'class')){
+        run(); break;
+      }
+    }
+  });
+  mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+})();
+
+
+;(()=>{
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvDistrictInfoInsert__) return;
+  window.__AdvDistrictInfoInsert__ = true;
+
+  const NOTE_TEXT = 'Election map is experimental; there may be errors.';
+
+  function findAdvContainer(){
+    return document.getElementById('advCards') || null;
+  }
+
+  function findDistrictOfficesTitle(root){
+    if (!root) return null;
+    const heads = root.querySelectorAll('.section-title, h1, h2, h3, [role="heading"]');
+    for (const h of heads){
+      const t = (h.textContent || '').replace(/\s+/g,' ').trim();
+      if (t === 'District Offices') return h;
+    }
+    // fallback: contains
+    for (const h of heads){
+      const t = (h.textContent || '').replace(/\s+/g,' ').trim().toLowerCase();
+      if (t.includes('district offices')) return h;
+    }
+    return null;
+  }
+
+  function ensureDistrictInfoAbove(officesTitle){
+    if (!officesTitle) return;
+    const parent = officesTitle.parentElement || officesTitle.closest('.card, section, article, div') || officesTitle.parentNode;
+    if (!parent || !parent.insertBefore) return;
+
+    // Check if we've already inserted
+    const existingInfo = parent.querySelector(':scope > .section-title[data-adv-dinfo="1"]');
+    const existingNote = parent.querySelector(':scope > .muted.data-note-votes[data-adv-dinfo="1"]');
+    if (existingInfo && existingNote){
+      // Make sure they are directly above officesTitle (in right order)
+      if (existingInfo.nextElementSibling !== officesTitle){
+        parent.insertBefore(existingInfo, officesTitle);
+      }
+      if (existingNote.nextElementSibling !== existingInfo){
+        parent.insertBefore(existingNote, existingInfo);
+      }
+      return;
+    }
+
+    // Create the muted note (same style as Voteview footer)
+    const note = existingNote || (()=>{
+      const d = document.createElement('div');
+      d.className = 'muted data-note-votes';
+      d.setAttribute('data-adv-dinfo','1');
+      d.style.marginTop = '10px';
+      d.style.textAlign = 'left';
+      d.textContent = NOTE_TEXT;
+      return d;
+    })();
+
+    // Create the new section title
+    const infoTitle = existingInfo || (()=>{
+      const d = document.createElement('div');
+      d.className = 'section-title';
+      d.setAttribute('data-adv-dinfo','1');
+      d.textContent = 'District Information';
+      return d;
+    })();
+
+    // Insert in correct order: note above, then info title, then existing offices title
+    parent.insertBefore(note, officesTitle);
+    parent.insertBefore(infoTitle, officesTitle);
+  }
+
+  function run(){
+    const adv = findAdvContainer();
+    if (!adv) return;
+    const offices = findDistrictOfficesTitle(adv);
+    if (offices) ensureDistrictInfoAbove(offices);
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', run, { once:true });
+  } else {
+    run();
+  }
+
+  // Observe #advCards for dynamic updates and keep elements in place
+  (function observe(){
+    const adv = findAdvContainer();
+    if (!adv) return;
+    if (adv.__advDistrictInfoObs) return;
+    const mo = new MutationObserver(()=>{
+      run();
+      // a couple retry passes for batched UI updates
+      setTimeout(run, 60);
+      setTimeout(run, 180);
+      requestAnimationFrame(run);
+    });
+    mo.observe(adv, { childList: true, subtree: true });
+    adv.__advDistrictInfoObs = mo;
+  })();
+})();
+
+
+;(()=>{
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvDistrictInfoSpacing__) return;
+  window.__AdvDistrictInfoSpacing__ = true;
+
+  function styleExperimentalNote(){
+    try{
+      const nodes = document.querySelectorAll('#advCards .data-note-votes[data-adv-dinfo="1"]');
+      nodes.forEach(el => {
+        el.style.marginTop = '4px';    // reduced space above
+        el.style.marginBottom = '16px';// increased space below
+        el.style.textAlign = 'left';   // keep alignment consistent
+      });
+    }catch(_){}
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', styleExperimentalNote, { once:true });
+  } else {
+    styleExperimentalNote();
+  }
+
+  // Keep styles if DOM reflows or content is injected
+  const adv = document.getElementById('advCards');
+  if (adv && !adv.__advDInfoSpacingObs){
+    const mo = new MutationObserver(styleExperimentalNote);
+    mo.observe(adv, { childList: true, subtree: true, attributes: true, attributeFilter: ['class','style'] });
+    adv.__advDInfoSpacingObs = mo;
+  }
+})();
