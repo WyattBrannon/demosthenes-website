@@ -3640,3 +3640,50 @@ try{
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true});
   else run();
 })();
+
+
+;(()=>{
+  // Mobile-responsiveness shim for the six dials:
+  // - Keep three columns but allow them to shrink
+  // - Scale SVG dials down on small screens so they fit side-by-side
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvDistrictDialsMobileV1__) return;
+  window.__AdvDistrictDialsMobileV1__ = true;
+
+  function addResponsiveCSS(){
+    if (document.getElementById('adv-dials-responsive-css')) return;
+    var css = ""
+      + "#adv-district-dials{grid-template-columns:repeat(3, minmax(0, 1fr)) !important;}"
+      + "#adv-district-dials .dial{display:flex;flex-direction:column;align-items:center;}"
+      + "#adv-district-dials .dial svg{width:100% !important;height:auto !important;max-width:120px;}"
+      + "@media (max-width: 680px){"
+      + "  #adv-district-dials{gap:10px;}"
+      + "  #adv-district-dials .dial svg{max-width:84px;}"
+      + "}";
+    var s = document.createElement('style');
+    s.id = 'adv-dials-responsive-css';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function applyOnce(){
+    var slot = document.getElementById('adv-district-dials');
+    if (!slot) return false;
+    // Ensure grid can shrink to fit three side-by-side
+    slot.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    return true;
+  }
+
+  function run(){
+    addResponsiveCSS();
+    var tries = 0;
+    (function tick(){
+      if (applyOnce()) return;
+      if (++tries > 120) return;
+      requestAnimationFrame(tick);
+    })();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true});
+  else run();
+})();
