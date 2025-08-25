@@ -345,10 +345,11 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
           var chartSum = 0;
           if (totalsObj) {
             var parts = [
-              { label: 'Small-dollar individual donations', value: num(totalsObj['individual_itemized_contributions']) },
-              { label: 'Large-dollar individual donations', value: num(totalsObj['individual_unitemized_contributions']) },
+              { label: 'Small-dollar individual donations', value: num(totalsObj['individual_unitemized_contributions']) },
+              { label: 'Large-dollar individual donations', value: num(totalsObj['individual_itemized_contributions']) },
               { label: 'Committee donations', value: num(totalsObj['other_political_committee_contributions']) + num(totalsObj['political_party_committee_contributions']) },
-              { label: 'Self-funded donations', value: num(totalsObj['candidate_contribution']) }
+              { label: 'Self-funded donations', value: num(totalsObj['candidate_contribution']) },
+              { label: 'Other donations', value: num(totalsObj['other_receipts']) }
             ];
             chartSum = parts.reduce(function(a,b){ return a + (b.value||0); }, 0);
             if (chartSum > 0) {
@@ -368,7 +369,7 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
               function hideTip(){ tip.style.opacity = '0'; }
 
               var W=160, H=160, R=58, CX=W/2, CY=H/2;
-              var C = 2*Math.PI*R, COLORS=['#0ea5e9','#f97316','#22c55e','#a855f7'], STROKE=22;
+              var C = 2*Math.PI*R, COLORS=['#0ea5e9','#f97316','#22c55e','#a855f7','#eab308'], STROKE=22;
 
               var svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
               svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.setAttribute('width', W); svg.setAttribute('height', H);
@@ -477,78 +478,8 @@ var url = layerURL + "/query?where=" + encodeURIComponent(where) + "&outFields=*
             financeContent.appendChild(none);
           }
 
-          // ----- Major Employer Donations (with toggle styled like Key Votes) -----
-          var nextTitle2 = document.createElement('div'); nextTitle2.className = 'section-title'; nextTitle2.style.marginTop='12px'; nextTitle2.textContent='Major Employer Donations';
-          financeContent.appendChild(nextTitle2);
-
-          var orgs = (((fec||{}).top_contributors||{}).top_contributors||{}).orgs || [];
-          if (Array.isArray(orgs) && orgs.length){
-            orgs.sort(function(a,b){ return num((b&&b.total)) - num((a&&a.total)); });
-
-            var listWrap2 = document.createElement('div');
-            listWrap2.id = 'employer-list-wrap';
-
-            var expanded2 = false;
-            function renderOrgs(){
-              listWrap2.innerHTML = '';
-              var limit = expanded2 ? Math.min(10, orgs.length) : Math.min(3, orgs.length);
-              var slice = orgs.slice(0, limit);
-              slice.forEach(function(o){
-                var name = (o && (o.employer || o.name)) || 'Unknown employer';
-                var dollars = fmtMoney(num(o && o.total));
-                var row = document.createElement('div');
-                row.className = 'stack';
-                row.style.borderTop = '1px solid var(--border)';
-                row.style.paddingTop = '10px';
-                row.style.paddingBottom = '10px';
-                row.style.lineHeight = '1.35';
-                var head = document.createElement('div');
-                var strong = document.createElement('strong'); strong.textContent = String(name); head.appendChild(strong);
-                var sep = document.createTextNode(' \u2022 ');
-                head.appendChild(sep);
-                var amt = document.createElement('span'); amt.textContent = dollars; head.appendChild(amt);
-                row.appendChild(head);
-                listWrap2.appendChild(row);
-              });
-
-              ctr2.innerHTML = '';
-              if (orgs.length > 3){
-                var btn2 = document.createElement('button');
-                btn2.className = 'btn';
-                btn2.textContent = expanded2 ? 'Show less' : 'Show more';
-                btn2.addEventListener('click', function(e){ e.preventDefault(); expanded2 = !expanded2; renderOrgs(); });
-                ctr2.appendChild(btn2);
-              }
-            }
-
-            var ctr2 = document.createElement('div');
-            ctr2.style.paddingTop = '8px';
-
-            renderOrgs();
-            financeContent.appendChild(listWrap2);
-            financeContent.appendChild(ctr2);
-          } else {
-            var none2 = document.createElement('div'); none2.className='muted'; none2.style.textAlign='left'; none2.textContent='No employer donations available.';
-            financeContent.appendChild(none2);
-          }
-
-          // Append data source footer to Campaign Finance card (once)
-          try {
-            var financeCard = document.getElementById('finance');
-            if (financeCard && !financeCard.querySelector('.data-note-finance')) {
-              var f3 = document.createElement('div');
-              f3.className = 'muted data-note-finance';
-              f3.style.marginTop = '10px';
-              f3.style.textAlign = 'left';
-              f3.textContent = 'Data from FEC.gov • Updated Quarterly';
-              financeCard.appendChild(f3);
-            }
-          } catch(e) { /* ignore */ }
-
-        } catch (e) {
-          if (window && window.console) console.warn('Finance render error:', e);
-        }
-      })();
+          } catch(e) { /* non-fatal */ }
+        })();
 
 
       var block = findBlockForBioguide(yamlText, bioguide);
@@ -1369,7 +1300,7 @@ renderKeyVotes();
       wrap.appendChild(el);
     }
     el.innerHTML = '';
-    var b = document.createElement('strong'); b.textContent = 'Office Phone:';
+    var b = document.createElement('strong'); b.textContent = 'DC Office Phone:';
     el.appendChild(b);
     el.appendChild(document.createTextNode(' ' + phone));
     el.style.display = '';
@@ -1423,7 +1354,7 @@ renderKeyVotes();
 
     // Populate content
     el.innerHTML = '';
-    var b = document.createElement('strong'); b.textContent = 'Office Phone:';
+    var b = document.createElement('strong'); b.textContent = 'DC Office Phone:';
     el.appendChild(b);
     el.appendChild(document.createTextNode(' ' + phone));
 
