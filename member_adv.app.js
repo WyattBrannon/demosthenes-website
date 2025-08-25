@@ -2528,6 +2528,7 @@ function ensureAdvancedVoteTabs(){
         var btn = document.createElement('button');
         btn.className = 'btn';
         btn.textContent = expanded ? 'Show less' : 'Show more';
+                btn.addEventListener('click', function(e){ e.preventDefault(); try{ e.stopImmediatePropagation(); e.stopPropagation(); }catch(_){}; expanded = !expanded; __FIN_ST.pacsExpanded = expanded; renderPacs(); }, false);
         btn.addEventListener('click', function(e){
           e.preventDefault(); e.stopPropagation();
           var x=window.scrollX||0, y=window.scrollY||0;
@@ -3002,7 +3003,21 @@ try{
     if (adv){
       run();
       // Observe #advCards for card mutations too
-      const mo = new MutationObserver(run);
+      const mo = new MutationObserver(function(muts){
+        try {
+          var card = document.getElementById('adv-card-finance');
+          if (card){
+            var outside = false;
+            for (var i=0; i<muts.length; i++){
+              var t = muts[i] && muts[i].target;
+              if (!t) { outside = true; break; }
+              if (!card.contains(t)) { outside = true; break; }
+            }
+            if (!outside) return; // Only finance card changed; skip running heavy renderers
+          }
+        } catch(_){}
+        run();
+      });
       mo.observe(adv, { childList: true, subtree: true });
       moDoc.disconnect();
     }
@@ -4046,7 +4061,8 @@ body.appendChild(sbTitle);
     var oldCtr=document.getElementById('sponsored-bills-ctr'); if(oldCtr&&oldCtr.closest&&oldCtr.closest('#advCards')) oldCtr.remove();
 var ctrl=document.createElement('div'); ctrl.id='sponsored-bills-ctr'; ctrl.style.paddingTop='8px';
 var btn=document.createElement('button'); btn.className='btn'; btn.textContent= expandedSB ? 'Show less' : 'Show more';
-btn.addEventListener('click', function(e){ e.preventDefault(); expandedSB=!expandedSB; btn.textContent = expandedSB ? 'Show less' : 'Show more'; renderSponsoredBills(); });
+                btn.addEventListener('click', function(e){ e.preventDefault(); __FIN_ST.pacsExpanded = !__FIN_ST.pacsExpanded; try { renderFinance(); } catch(_) {} });
+                btn.addEventListener('click', function(e){ e.preventDefault(); __FIN_ST.pacsExpanded = !__FIN_ST.pacsExpanded; try { renderFinance(); } catch(_) {} });
 ctrl.appendChild(btn);
 if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctrl, billsWrap.nextSibling);
 
@@ -4153,7 +4169,6 @@ if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctrl, billsWrap.next
     }
 
     renderSponsoredBills(); __sigworkBuilt = true;
-renderBills();
     return true;
   }
 
@@ -4161,7 +4176,7 @@ renderBills();
   function renderFinance(){
   // Ensure body + containers under the Advanced card
   var bodyNode = ensureBody('adv-card-finance', 'adv-finance-body'); if (!bodyNode) return false;
-  // Remove placeholder text that says "Advanced ... will appear here."
+  // Remove placeholder text that says "Advanced  will appear here."
   Array.from(bodyNode.parentElement.querySelectorAll('.muted')).forEach(function(n){
     var t=(n.textContent||'').toLowerCase();
     if (t.indexOf('advanced')===0) n.remove();
@@ -4170,11 +4185,29 @@ renderBills();
   var none = document.getElementById('adv-finance-none');
   if (!none) { none = document.createElement('div'); none.id='adv-finance-none'; none.className='muted'; none.textContent='No information available.'; bodyNode.appendChild(none); }
   var content = document.getElementById('adv-finance-content');
+  var cardEl = document.getElementById('adv-card-finance');
+  
   if (!content) { content = document.createElement('div'); content.id='adv-finance-content'; bodyNode.appendChild(content); }
 
   // Use the exact same rendering logic as Basic mode, pointed at our Advanced containers
   try {
     var data = getRootData();
+    // Persisted per-member state to survive any re-renders
+    var __LS_KEY = '__ADV_FIN_STATE_LS';
+    function __loadFinState(){ try { return JSON.parse(localStorage.getItem(__LS_KEY) || '{}'); } catch(_) { return {}; } }
+    function __saveFinState(all){ try { localStorage.setItem(__LS_KEY, JSON.stringify(all)); } catch(_) {} }
+    var __BI_GUIDE = (data && data.identity && (data.identity.bioguide || data.identity.bioguide_id)) || (data && data.bioguide) || 'default';
+    var __ALL_ST = __loadFinState();
+    var __FIN_ST = (__ALL_ST[__BI_GUIDE] || (__ALL_ST[__BI_GUIDE] = {}));
+    window.__ADV_FIN_STATE = (window.__ADV_FIN_STATE || {});
+    window.__ADV_FIN_STATE[__BI_GUIDE] = __FIN_ST;
+    window.__ADV_BUILD_STAMP = 'adv-fin-20250825-213038';
+    window.__ADV_FIN_STATE = (window.__ADV_FIN_STATE || {});
+
+    var __ADV_FIN_STATE = (window.__ADV_FIN_STATE || (window.__ADV_FIN_STATE = {}));
+    var __FIN_KEY = (data && data.identity && (data.identity.bioguide || data.identity.bioguide_id)) || (data && data.bioguide) || 'default';
+    var __FIN_ST = (__ADV_FIN_STATE[__FIN_KEY] || (__ADV_FIN_STATE[__FIN_KEY] = {}));
+
     
 
         try {
@@ -4208,13 +4241,11 @@ renderBills();
           var chartSum = 0;
           if (totalsObj) {
             var parts = [
-
               { label: 'Small-dollar individual donations', value: num(totalsObj['individual_unitemized_contributions']) },
               { label: 'Large-dollar individual donations', value: num(totalsObj['individual_itemized_contributions']) },
               { label: 'Committee donations', value: num(totalsObj['other_political_committee_contributions']) + num(totalsObj['political_party_committee_contributions']) },
               { label: 'Self-funded donations', value: num(totalsObj['candidate_contribution']) },
               { label: 'Other donations', value: num(totalsObj['other_receipts']) }
-            
             ];
             chartSum = parts.reduce(function(a,b){ return a + (b.value||0); }, 0);
             if (chartSum > 0) {
@@ -4299,7 +4330,7 @@ renderBills();
             var listWrap = document.createElement('div');
             listWrap.id = 'committee-list-wrap';
 
-            var expanded = false;
+            var expanded = !!__FIN_ST.pacsExpanded;
             function renderPacs(){
               listWrap.innerHTML = '';
               var limit = expanded ? Math.min(10, pacs.length) : Math.min(3, pacs.length);
@@ -4327,7 +4358,14 @@ renderBills();
                 var btn = document.createElement('button');
                 btn.className = 'btn';
                 btn.textContent = expanded ? 'Show less' : 'Show more';
-                btn.addEventListener('click', function(e){ e.preventDefault(); expanded = !expanded; renderPacs(); });
+                btn.addEventListener('click', function(e){
+                  e.preventDefault(); try{ e.stopImmediatePropagation(); e.stopPropagation(); }catch(_){ }
+                  expanded = !expanded;
+                  __FIN_ST.pacsExpanded = expanded;
+                  __ALL_ST[__BI_GUIDE] = __FIN_ST; __saveFinState(__ALL_ST);
+                  btn.textContent = expanded ? 'Show less' : 'Show more';
+                  renderPacs();
+                }, false);
                 ctr1.appendChild(btn);
               }
             }
@@ -4354,7 +4392,7 @@ renderBills();
             var listWrap2 = document.createElement('div');
             listWrap2.id = 'employer-list-wrap';
 
-            var expanded2 = false;
+            var expanded2 = !!__FIN_ST.orgsExpanded;
             function renderOrgs(){
               listWrap2.innerHTML = '';
               var limit = expanded2 ? Math.min(10, orgs.length) : Math.min(3, orgs.length);
@@ -4382,7 +4420,14 @@ renderBills();
                 var btn2 = document.createElement('button');
                 btn2.className = 'btn';
                 btn2.textContent = expanded2 ? 'Show less' : 'Show more';
-                btn2.addEventListener('click', function(e){ e.preventDefault(); expanded2 = !expanded2; renderOrgs(); });
+                btn2.addEventListener('click', function(e){
+                  e.preventDefault(); try{ e.stopImmediatePropagation(); e.stopPropagation(); }catch(_){ }
+                  expanded2 = !expanded2;
+                  __FIN_ST.orgsExpanded = expanded2;
+                  __ALL_ST[__BI_GUIDE] = __FIN_ST; __saveFinState(__ALL_ST);
+                  btn2.textContent = expanded2 ? 'Show less' : 'Show more';
+                  renderOrgs();
+                }, false);
                 ctr2.appendChild(btn2);
               }
             }
@@ -4434,9 +4479,27 @@ renderBills();
     window.addEventListener('hashchange', function(){ setTimeout(function(){ attempts=0; tick(); }, 30); });
     var adv = document.getElementById('advCards');
     if (adv && !adv.__sigfinObs){
-      var mo = new MutationObserver(function(){ setTimeout(function(){ attempts=0; tick(); }, 20); });
+      var mo = new MutationObserver(function(muts){
+      try {
+        var card = document.getElementById('adv-card-finance');
+        if (card){
+          // Ignore mutations that occur entirely inside the finance card.
+          var outside = false;
+          for (var i=0; i<muts.length; i++){
+            var t = muts[i] && muts[i].target;
+            if (!t) { outside = true; break; }
+            if (!card.contains(t)) { outside = true; break; }
+          }
+          if (!outside) return; // all mutations were inside finance card; skip re-render
+        }
+      } catch(_){}
+      setTimeout(function(){ attempts=0; tick(); }, 20);
+    });
       mo.observe(adv, {childList:true, subtree:true});
       adv.__sigfinObs = mo;
     }
   })();
 })();
+
+// Expose for debugging
+try { window.renderFinance = renderFinance; } catch(_) {}
