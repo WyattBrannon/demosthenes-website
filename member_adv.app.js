@@ -3222,3 +3222,421 @@ try{
     adv.__advDInfoSpacingObs = mo;
   }
 })();
+
+
+;(()=>{
+  // Advanced mode: rename "District Offices" → "Office Information"
+  // Insert Website/Contact buttons + DC Office Phone directly below the title
+  // Then insert the district office listing directly below those
+  // Safe: single capped rAF retry, no heavy observers
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvOfficeInfoComboV2__) return;
+  window.__AdvOfficeInfoComboV2__ = true;
+
+  function getData(){
+    try{
+      if (typeof results!=='undefined' && results && results[0] && results[0].data) return results[0].data;
+    }catch(_){}
+    return (window.__memberData || window.memberData || window.member || {}) || {};
+  }
+
+  function findAdv(){ return document.getElementById('advCards'); }
+
+  function findAndRenameTitle(root){
+    if (!root) return null;
+    var heads = root.querySelectorAll('.section-title, h1, h2, h3, [role="heading"]');
+    var offices = null, officeInfo = null;
+    for (var i=0;i<heads.length;i++){
+      var t = (heads[i].textContent||'').replace(/\s+/g,' ').trim();
+      if (t === 'District Offices'){ offices = heads[i]; break; }
+      if (t === 'Office Information'){ officeInfo = heads[i]; }
+    }
+    if (offices){
+      offices.textContent = 'Office Information';
+      return offices;
+    }
+    if (officeInfo) return officeInfo;
+    // fallback: contains (case-insensitive)
+    for (var j=0;j<heads.length;j++){
+      var s = (heads[j].textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if (s.indexOf('district offices')>=0){ heads[j].textContent = 'Office Information'; return heads[j]; }
+      if (s.indexOf('office information')>=0) return heads[j];
+    }
+    return null;
+  }
+
+  function ensureContactBelowTitle(titleEl){
+    var parent = titleEl && titleEl.parentElement;
+    if (!parent) return {wrap:null, phone:null};
+
+    // Buttons wrapper
+    var wrap = document.getElementById('district-contact-btns');
+    if (!wrap){
+      wrap = document.createElement('div');
+      wrap.id = 'district-contact-btns';
+      wrap.className = 'row';
+      wrap.style.display = 'none'; // toggled on when any link exists
+      wrap.style.gap = '8px';
+      wrap.style.marginTop = '6px';
+
+      var w = document.createElement('a');
+      w.id = 'btn-website';
+      w.className = 'btn';
+      w.target = '_blank'; w.rel = 'noopener noreferrer';
+      w.textContent = 'Website';
+
+      var c = document.createElement('a');
+      c.id = 'btn-contact';
+      c.className = 'btn';
+      c.target = '_blank'; c.rel = 'noopener noreferrer';
+      c.textContent = 'Contact';
+
+      wrap.appendChild(w); wrap.appendChild(c);
+      parent.insertBefore(wrap, titleEl.nextSibling);
+    } else if (wrap.previousElementSibling !== titleEl){
+      try{ parent.insertBefore(wrap, titleEl.nextSibling); }catch(_){}
+    }
+
+    // DC Office Phone line
+    var phone = document.getElementById('office-phone-line');
+    if (!phone){
+      phone = document.createElement('div');
+      phone.id = 'office-phone-line';
+      phone.style.marginTop = '8px';
+      phone.style.display = 'block';
+      parent.insertBefore(phone, wrap.nextSibling);
+    } else if (phone.previousElementSibling !== wrap){
+      try{ parent.insertBefore(phone, wrap.nextSibling); }catch(_){}
+    }
+
+    return {wrap:wrap, phone:phone};
+  }
+
+  function ensureOfficeListAfter(wrap, phone, titleEl){
+    var parent = titleEl && titleEl.parentElement;
+    if (!parent) return null;
+    var anchor = phone || wrap || titleEl;
+
+    var block = document.getElementById('adv-office-list-block');
+    if (!block){
+      block = document.createElement('div');
+      block.id = 'adv-office-list-block';
+      block.style.marginTop = '8px';
+
+      var none = document.createElement('div');
+      none.id = 'office-list-none';
+      none.className = 'muted';
+      none.style.margin = '6px 0';
+      none.textContent = 'No offices listed.';
+
+      var list = document.createElement('div');
+      list.id = 'office-list';
+
+      var ctr = document.createElement('div');
+      ctr.id = 'office-list-ctr';
+      ctr.style.paddingTop = '8px';
+
+      var btn = document.createElement('button');
+      btn.id = 'office-list-toggle';
+      btn.className = 'btn';
+      ctr.appendChild(btn);
+
+      block.appendChild(none);
+      block.appendChild(list);
+      block.appendChild(ctr);
+
+      if (anchor.nextSibling) parent.insertBefore(block, anchor.nextSibling);
+      else parent.appendChild(block);
+    } else {
+      // keep order
+      if (block.previousElementSibling !== anchor){
+        try{
+          if (anchor.nextSibling) parent.insertBefore(block, anchor.nextSibling);
+          else parent.appendChild(block);
+        }catch(_){}
+      }
+    }
+    return block;
+  }
+
+  function hydrate(){
+    var adv = findAdv(); if (!adv) return false;
+    var titleEl = findAndRenameTitle(adv); if (!titleEl) return false;
+
+    var nodes = ensureContactBelowTitle(titleEl);
+    var block = ensureOfficeListAfter(nodes.wrap, nodes.phone, titleEl); if (!block) return false;
+
+    // hydrate contact buttons & phone
+    var data = getData();
+    var url = (data && data.contact && data.contact.url) ? String(data.contact.url) : '';
+    var cf  = (data && data.contact && data.contact.contact_form) ? String(data.contact.contact_form) : '';
+
+    var wBtn = document.getElementById('btn-website');
+    var cBtn = document.getElementById('btn-contact');
+    var any = false;
+    if (wBtn){
+      if (/^https?:\/\//i.test(url)){ wBtn.href = url; wBtn.style.display=''; any = true; }
+      else { wBtn.style.display = 'none'; }
+    }
+    if (cBtn){
+      if (/^https?:\/\//i.test(cf)){ cBtn.href = cf; cBtn.style.display=''; any = true; }
+      else { cBtn.style.display = 'none'; }
+    }
+    nodes.wrap && (nodes.wrap.style.display = any ? '' : 'none');
+
+    var phoneVal = (data && data.contact && data.contact.phone) ||
+                   (data && data.identity && data.identity.contact && data.identity.contact.phone) || '';
+    if (nodes.phone){
+      if (phoneVal){
+        nodes.phone.textContent = '';
+        var b = document.createElement('strong'); b.textContent = 'DC Office Phone:';
+        nodes.phone.appendChild(b);
+        nodes.phone.appendChild(document.createTextNode(' ' + String(phoneVal)));
+        nodes.phone.style.display = 'block';
+      } else {
+        nodes.phone.style.display = 'none';
+      }
+    }
+
+    // hydrate office list
+    var list = document.getElementById('office-list');
+    var none = document.getElementById('office-list-none');
+    var ctr  = document.getElementById('office-list-ctr');
+    var btn  = document.getElementById('office-list-toggle');
+    if (!list || !none || !ctr || !btn) return false;
+
+    var officesAll = (data && Array.isArray(data.offices)) ? data.offices.slice() : [];
+    var expanded = !!block.__expandedOffices;
+    function render(){
+      list.innerHTML = '';
+      if (!officesAll.length){
+        none.style.display = '';
+        list.style.display = 'none';
+        ctr.style.display = 'none';
+        return;
+      }
+      var slice = expanded ? officesAll : officesAll.slice(0,3);
+      slice.forEach(function(o){
+        var city  = (o && o.city  || '').toString();
+        var state = (o && o.state || '').toString();
+        var zip   = (o && (o.zip || o.zip5) || '').toString();
+        var addr  = (o && o.address || '').toString();
+        var suite = (o && o.suite   || '').toString();
+        var phone = (o && o.phone   || '').toString();
+
+        var item = document.createElement('div');
+        item.className = 'office-entry';
+        item.style.padding = '8px 0';
+        item.style.borderTop = '1px solid var(--border)';
+
+        var top = document.createElement('div');
+        var cityState = [city, state].filter(Boolean).join(', ');
+        top.innerHTML = (cityState ? ('<strong>' + cityState + '</strong>') : '') + (zip ? (' ' + zip) : '');
+        item.appendChild(top);
+
+        var line2 = document.createElement('div');
+        var line2txt = addr + (addr && suite ? ', ' : '') + suite;
+        line2.textContent = line2txt;
+        item.appendChild(line2);
+
+        if (phone){
+          var line3 = document.createElement('div');
+          line3.textContent = phone;
+          item.appendChild(line3);
+        }
+
+        list.appendChild(item);
+      });
+      list.style.display = '';
+
+      if (officesAll.length > 3){
+        ctr.style.display = '';
+        btn.textContent = expanded ? 'Show less' : 'Show more';
+      } else {
+        ctr.style.display = 'none';
+      }
+      none.style.display = 'none';
+    }
+    btn.onclick = function(e){ e.preventDefault(); expanded = !expanded; block.__expandedOffices = expanded; render(); };
+    render();
+
+    return true;
+  }
+
+  function run(){
+    var tries = 0;
+    (function tick(){
+      if (hydrate()) return;
+      if (++tries > 160) return;
+      requestAnimationFrame(tick);
+    })();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true});
+  else run();
+})();
+
+
+;(()=>{
+  // Advanced Mode — District Information Dials (party-colored arcs, labels use class="label" only)
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__AdvDistrictDialsResetPartyV2__) return;
+  window.__AdvDistrictDialsResetPartyV2__ = true;
+
+  function getMemberData(){
+    try{ if (typeof data !== 'undefined' && data) return data; }catch(_){}
+    return (window.__memberData || window.memberData || window.member || {}) || {};
+  }
+
+  function partyColor(d){
+    var p = (d && (d.party || (d.identity && d.identity.party) || d.party_affiliation || d.partisan)) || '';
+    p = String(p||'').trim().toLowerCase();
+    if (p.startsWith('r')) return '#dc2626';    // red for Republicans
+    return '#2563eb';                           // blue for Democrats/Independents/unknown
+  }
+
+  function findAdv(){ return document.getElementById('advCards'); }
+
+  function findDistrictInfoTitle(root){
+    if (!root) return null;
+    var marked = root.querySelector('.section-title[data-adv-dinfo="1"]');
+    if (marked) return marked;
+    var heads = root.querySelectorAll('.section-title, h1, h2, h3, [role="heading"]');
+    for (var i=0;i<heads.length;i++){
+      var t=(heads[i].textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if (t==='district information') return heads[i];
+    }
+    for (var j=0;j<heads.length;j++){
+      var s=(heads[j].textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if (s.indexOf('district information')>=0) return heads[j];
+    }
+    return null;
+  }
+
+  function ensureContainerAfterTitle(titleEl){
+    var parent = titleEl && titleEl.parentElement;
+    if (!parent) return null;
+    var slot = document.getElementById('adv-district-dials');
+    if (!slot){
+      slot = document.createElement('div');
+      slot.id = 'adv-district-dials';
+      slot.style.display = 'grid';
+      slot.style.gridTemplateColumns = 'repeat(3, minmax(180px, 1fr))';
+      slot.style.gap = '16px';
+      slot.style.margin = '8px 0 8px';
+      slot.style.gridColumn = '1 / -1';
+      if (titleEl.nextSibling) parent.insertBefore(slot, titleEl.nextSibling);
+      else parent.appendChild(slot);
+    } else {
+      if (slot.previousElementSibling !== titleEl){
+        if (titleEl.nextSibling) parent.insertBefore(slot, titleEl.nextSibling);
+        else parent.appendChild(slot);
+      }
+      slot.innerHTML = '';
+    }
+    try{
+      var ord = parseFloat(getComputedStyle(titleEl).order || '0') || 0;
+      slot.style.order = String(ord + 1);
+    }catch(_){}
+    return slot;
+  }
+
+  function normPct(val){
+    var n = Number(val);
+    if (!isFinite(n)) return null;
+    if (Math.abs(n) <= 1) n = n * 100; // accept proportions
+    if (n < 0) n = 0;
+    if (n > 100) n = 100;
+    return n;
+  }
+
+  // Fallback dial renderer (passes color) — labels created with class="label" and no inline styles.
+  function renderDialCompat(container, valuePct, centerText, label, tooltip, strokeColor){
+    var size=120, stroke=12, r=(size/2)-stroke, C=2*Math.PI*r;
+    var pct=(valuePct==null||isNaN(valuePct))?0:Math.max(0,Math.min(100,Number(valuePct)));
+    var offset=C*(1-pct/100);
+    var wrap=document.createElement('div'); wrap.className='dial'; if(tooltip) wrap.title=tooltip;
+    var color=strokeColor||'#2563eb';
+    var svg = ''
+      + '<svg viewBox="0 0 '+size+' '+size+'" role="img" aria-label="'+(label||'')+'">'
+      +   '<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="'+stroke+'"></circle>'
+      +   '<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+stroke+'" stroke-linecap="round"'
+      +           ' stroke-dasharray="'+C+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+(size/2)+' '+(size/2)+')"></circle>'
+      +   '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="20" font-weight="800">'+centerText+'</text>'
+      + '</svg>';
+    var labelDiv = document.createElement('div');
+    labelDiv.className = 'label';
+    labelDiv.textContent = label||'';
+    wrap.innerHTML = svg;
+    wrap.appendChild(labelDiv);
+    container.appendChild(wrap);
+  }
+
+  function normalizeLabels(slot){
+    // Convert any heading-like label to a simple .label element and remove inline styles
+    var nodes = slot.querySelectorAll('.dial .section-title, .dial [role="heading"], .dial .dial-label, .dial .label');
+    nodes.forEach(function(n){
+      if (n.classList){
+        n.className = 'label';
+      }
+      if (n.removeAttribute){
+        n.removeAttribute('role');
+        n.removeAttribute('style');
+      }
+    });
+  }
+
+  function render(){
+    var adv = findAdv(); if (!adv) return false;
+    var title = findDistrictInfoTitle(adv); if (!title) return false;
+    var slot = ensureContainerAfterTitle(title); if (!slot) return false;
+
+    var member = getMemberData() || {};
+    var d = member.district || member.district_info || {};
+    var color = partyColor(member);
+
+    function getPath(obj, path){
+      try{ var cur=obj; for (var i=0;i<path.length;i++){ if (cur==null) return null; cur=cur[path[i]]; } return cur; }catch(_){ return null; }
+    }
+
+    var specs = [
+      { path: ['race','white'], invert: true,  label: 'Non-White Population' },
+      { path: ['age','under_18'], invert: false, label: 'Minor Population' },
+      { path: ['income','200k_plus'], invert: false, label: '>$200k Income Population' },
+      { path: ['education','bachelors_plus'], invert: false, label: 'Degreed Population' },
+      { path: ['unemployment_percent'], invert: false, label: 'Unemployed Population' },
+      { path: ['health_insurance_percent'], invert: true,  label: 'Uninsured Population' }
+    ];
+
+    var useRender = (typeof window.renderDial === 'function') ? window.renderDial : renderDialCompat;
+
+    specs.forEach(function(sp){
+      var raw = getPath(d, sp.path);
+      if (raw==null && sp.path.length===1){ raw = d[sp.path[0]]; }
+      var pct = normPct(raw); if (pct==null) pct = 0;
+      if (sp.invert) pct = Math.max(0, Math.min(100, 100 - pct));
+      var center = (isFinite(pct) ? Math.round(pct) + '%' : '—');
+      var cell = document.createElement('div');
+      cell.style.display='flex'; cell.style.justifyContent='center'; cell.style.alignItems='center'; cell.style.padding='6px 0';
+      // pass party color as 6th param
+      useRender(cell, pct, center, sp.label, null, color);
+      slot.appendChild(cell);
+    });
+
+    // Ensure labels are simple .label elements
+    normalizeLabels(slot);
+    return true;
+  }
+
+  function run(){
+    var tries = 0;
+    (function tick(){
+      if (render()) return;
+      if (++tries > 160) return;
+      requestAnimationFrame(tick);
+    })();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true});
+  else run();
+})();
