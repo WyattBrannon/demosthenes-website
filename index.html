@@ -1,11 +1,12 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <!-- build: index.html · v2025-08-16-idx4 -->
-  <meta charset="utf-8" />
-  <title>Demosthenes — Find Your Representatives</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
+<!-- build: index.html · v2025-08-16-idx4 -->
+<meta charset="utf-8"/>
+<title>Demosthenes — Find Your Representatives</title>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<style>
     :root { --fg:#111827; --muted:#6b7280; --card:#fafafa; --border:#e5e7eb; --accent:#2563eb; --warn:#b45309; --err:#b91c1c; }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { overflow-x:hidden; }
@@ -34,10 +35,11 @@
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     label.select { display:block; font-size:.95rem; color:var(--muted); }
     select { padding:.45rem .6rem; border:1px solid var(--border); border-radius:8px; font-size:1rem; width:100%; }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" crossorigin="anonymous"></script>
-
-
+  
+/* results bottom padding auto */
+#results{ padding-bottom: var(--results-bottom-pad, 96px); }
+</style>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 <script>
 // JSONP helper (for APIs that don't set CORS headers)
 function jsonpRequest(url, paramName = 'callback', debug) {
@@ -143,58 +145,75 @@ function extractDistrictFromCensus(j) {
   return "";
 }
 </script>
+<style>
+/* --- Fixed bottom input card (column width) --- */
+#inputCard.card{
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: calc(100% - 32px);
+  max-width: 720px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  z-index: 30;
+  box-shadow: 0 -6px 12px rgba(0,0,0,0.06);
+}
+#inputCard .inner{ padding:10px 12px; }
+#inputCard .row:first-of-type{ display:flex; align-items:center; gap:8px; flex-wrap:nowrap; margin:0; }
+#inputCard .grid2{ margin-top:8px; }
+#inputCard .grid2 + .row{ margin-top:8px; }
+#addr{ flex:1 1 auto; min-width:0; }
+#go{ flex:0 0 auto; white-space:nowrap; }
 
+/* Results scroll underneath */
+#results{ position:relative; z-index:1; }
 
-</head>
+/* results bottom padding auto */
+#results{ padding-bottom: var(--results-bottom-pad, 96px); }
+</style><style>
+/* Ensure bottom card edges are flush with the viewport bottom */
+#inputCard.card{
+  bottom: -1px; /* push 1px past edge so corners/border aren't visible */
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: 0;
+}
+
+/* results bottom padding auto */
+#results{ padding-bottom: var(--results-bottom-pad, 96px); }
+</style></head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Demosthenes</h1>
-      <p class="hint">Data-rich reports on your congresspeople</p>
-  <div class="row" style="justify-content:center; margin-top:8px">
-    <a class="btn" href="about.html">About</a>
-  </div>
-    </header>
-
-    <section class="card">
-      <form id="searchForm" class="row">
-        <input id="addr" type="text" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC" enterkeyhint="go">
-        <button class="primary" id="go">Find my reps</button>
-</form>
-      <div class="settings" style="margin-top:8px;">
-        
-        <div class="row" style="margin-top:6px">
-          <label>  </label>
-          </div>
-        <div id="msg" class="msg warn" style="display:none;"></div>
-        <details id="debug"><summary>Debug info</summary><pre id="dbgpre"></pre></details>
-      </div>
-    </section>
-
-    <section class="card">
-      <!-- Name search (above manual selector) -->
-      <div class="row" style="margin-bottom:8px">
-        <input id="nameQuery" type="text" placeholder="Search by name (e.g., Eleanor Holmes Norton)" />
-        <button class="primary" id="searchByName">Search</button>
-      </div>
-      <h3>Manual district selector</h3>
-      <div class="grid2">
-        <label class="select">State
+<div class="wrap">
+<header>
+<h1>Demosthenes</h1>
+<p class="hint">Data-rich reports on your congresspeople</p>
+<div class="row" style="justify-content:center; margin-top:8px"><a class="btn" href="about.html">About</a><span aria-hidden="true" class="dim" style="pointer-events:none; margin:0 8px;">•</span><a class="btn" href="aggregate.html">Aggregate</a></div>
+</header>
+<section class="card" id="inputCard"><div class="inner">
+<form class="row" id="searchForm">
+<input enterkeyhint="go" id="addr" placeholder="Your address or congressperson's name" type="text"/>
+<button class="primary" id="go">Search</button>
+</form><div class="grid2">
+<label class="select">State
           <select id="stateSel"></select>
-        </label>
-        <label class="select">District
+</label>
+<label class="select">District
           <select id="distSel"></select>
-        </label>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <button id="goManual">Show my reps</button>
-      </div>
-    </section>
-
-    <section id="results" class="result-grid"></section>
+</label>
+</div><div class="row" style="margin-top:8px">
+<button id="goManual">Show my reps</button>
 </div>
-
-  <script>
+<div class="settings" style="margin-top:8px;">
+<div class="row" style="margin-top:6px">
+<label> </label>
+</div>
+<div class="msg warn" id="msg" style="display:none;"></div>
+</div>
+</div></section>
+<section class="result-grid" id="results"></section>
+</div>
+<script>
   window.addEventListener('error', function(e){
     const msg = document.getElementById('msg');
     if (!msg) return;
@@ -253,7 +272,7 @@ const goBtn = document.getElementById("go");
     }
     setApiUI();
 
-    function debug(line){ dbgpre.textContent += line + "\n"; }
+    function debug(line){ if (typeof dbgpre !== "undefined" && dbgpre) dbgpre.textContent += line + "\n"; }
     function showMsg(text, kind="warn"){ msg.textContent = text; msg.className = "msg " + kind; msg.style.display = 'block'; }
     function hideMsg(){ msg.style.display = 'none'; }
 
@@ -451,35 +470,53 @@ try {
 } catch (e) {
   debug("OSM fallback failed: " + e.message);
 }
-// 3) Require manual selection
-      throw new Error('Automatic resolver unavailable on this network. Use the manual state/district selector below.');
+
+    
     }
 
-    async function onGoClick(){
-      hideMsg(); dbgpre.textContent = "";
+async function onGoClick(){
+      hideMsg(); if (typeof dbgpre!=="undefined" && dbgpre) dbgpre.textContent = "";
       try {
         if (!CURRENT.length) await loadMembers();
-        const address = addrEl.value.trim();
-        if (!address) { showMsg("Enter an address.", "warn"); return; }
-        const where = await resolveAddress(address);
-        const people = findMembers(where);
-        if (!people.length) showMsg('No current members found for '+where.state+'-'+where.district+'.', 'warn');
-        renderResults(people);
+        const q = (addrEl && addrEl.value ? addrEl.value.trim() : '').trim();
+        if (!q) { showMsg("Enter an address or name.", "warn"); return; }
+
+        const words = q.split(/\s+/).filter(Boolean);
+        if (words.length === 1){
+          // Single word: always search by name first
+          const matches = searchMembersByName(q);
+          if (matches && matches.length){ renderResults(matches); return; }
+          // As a fallback, try address resolution anyway
+          try {
+            const where = await resolveAddress(q);
+            const people = findMembers(where);
+            if (people && people.length){ renderResults(people); return; }
+          } catch(_){}
+          showMsg("Couldn't match that name.", "warn");
+          return;
+        }
+
+        // Multi-word: try address resolution first
+        try {
+          const where = await resolveAddress(q);
+          const people = findMembers(where);
+          if (people && people.length){ renderResults(people); return; }
+        } catch(_){ /* fall through */ }
+
+        // Fallback: name search
+        const matches = searchMembersByName(q);
+        if (matches && matches.length){ renderResults(matches); return; }
+
+        showMsg("Couldn't resolve that address or match any names.", "warn");
       } catch (e){
-        showMsg(e.message, "err");
+        showMsg(e.message || String(e), "err");
       }
     }
 
+
+
     goBtn.addEventListener('click', function(ev){ ev.preventDefault(); onGoClick(); });
-    (sampleBtn) && sampleBtn.addEventListener('click', function(ev){ ev.preventDefault(); addrEl.value = "1600 Pennsylvania Ave NW, Washington, DC"; onGoClick(); });
-
-    // Name search wiring
-    const nameInput = document.getElementById('nameQuery');
-    const nameBtn = document.getElementById('searchByName');
-    if (nameBtn) nameBtn.addEventListener('click', function(){ hideMsg(); const q = nameInput && nameInput.value || ''; const people = searchMembersByName(q); renderResults(people); });
-    if (nameInput) nameInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); nameBtn && nameBtn.click(); }});
-
-    goManual.addEventListener('click', function(){
+goManual.addEventListener('click', function(){
       hideMsg();
       const state = stateSel.value;
       const district = distSel.value || "AL";
@@ -491,5 +528,47 @@ try {
     loadMembers().catch(e=>showMsg(e.message,'err'));
   });
   </script>
+
+<script>
+(function(){
+  function updateResultsBottomPad(){
+    try{
+      var res = document.getElementById('results');
+      var card = document.getElementById('inputCard');
+      if (!res || !card) return;
+      var h = card.getBoundingClientRect().height || 0;
+      var pad = Math.ceil(h + 16); // small visual gap
+      // Apply via inline style for strongest precedence
+      res.style.paddingBottom = pad + 'px';
+      // Also expose as CSS variable if needed elsewhere
+      document.documentElement.style.setProperty('--results-bottom-pad', pad + 'px');
+    }catch(e){/* no-op */}
+  }
+  // On load and resize
+  window.addEventListener('resize', updateResultsBottomPad);
+  document.addEventListener('DOMContentLoaded', updateResultsBottomPad);
+  // Observe bottom card size changes
+  try {
+    if ('ResizeObserver' in window){
+      var ro = new ResizeObserver(updateResultsBottomPad);
+      var card = document.getElementById('inputCard');
+      if (card) ro.observe(card);
+    }
+  } catch(_){}
+  // Observe results content changes so padding updates when lots of cards render
+  try {
+    if ('MutationObserver' in window){
+      var res = document.getElementById('results');
+      if (res){
+        var mo = new MutationObserver(updateResultsBottomPad);
+        mo.observe(res, {childList:true, subtree:false});
+      }
+    }
+  } catch(_){}
+  // Initial tick after a frame
+  requestAnimationFrame(updateResultsBottomPad);
+})();
+</script>
+
 </body>
 </html>
