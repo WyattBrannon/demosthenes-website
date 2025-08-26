@@ -38,6 +38,17 @@
   
 /* results bottom padding auto */
 #results{ padding-bottom: var(--results-bottom-pad, 96px); }
+
+@media (max-width: 760px){
+  #inputCard.card{
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+  }
+}
+
 </style>
 <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 <script>
@@ -182,7 +193,25 @@ function extractDistrictFromCensus(j) {
 
 /* results bottom padding auto */
 #results{ padding-bottom: var(--results-bottom-pad, 96px); }
-</style></head>
+</style>
+<style>
+/* Full-viewport-width bottom card at narrow screens */
+@media (max-width: 752px){
+  #inputCard.card{
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100vw;      /* includes borders due to global border-box */
+    max-width: none;   /* ignore column constraint */
+    bottom: 0;         /* do not push past the edge */
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+}
+</style>
+
+</head>
 <body>
 <div class="wrap">
 <header>
