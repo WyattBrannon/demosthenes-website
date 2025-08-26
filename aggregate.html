@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demosthenes — Aggregate Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- build: member.html · v2025-08-16-33 -->
+<style>
+    h1 { font-size:1.9rem; margin:0 0 6px; text-align:center; }
+    .hint { color:var(--muted); margin:.25rem 0 0; text-align:center; }
+
+    :root { --fg:#111827; --muted:#6b7280; --card:#ffffff; --border:#e5e7eb; --bg:#f8fafc; --accent:#2563eb; --maxw:720px; --pad:16px; --gap:12px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { overflow-x:hidden; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--fg); margin:0; background:#f8fafc; }
+    a { color: inherit; }
+    .wrap{ min-height:100dvh; display:flex; flex-direction:column; }
+    header{ padding:24px var(--pad) 10px; text-align:center; }
+    .title{ font-weight:800; font-size:1.8rem; line-height:1.1; }
+    .subtitle{ color:var(--muted); margin-top:6px; font-size:1rem; }
+    .badge{ color:var(--muted); font-size:.8rem; }
+    main{ flex:1; display:flex; justify-content:center; }
+    .container{ width:100%; max-width:var(--maxw); margin:0 auto; padding: 0 var(--pad) 28px; }
+    .nav{ display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .btn{ display:inline-block; border:1px solid var(--border); background:#fff; border-radius:10px; padding:10px 12px; text-decoration:none; color:#111; font-weight:600; }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 1px 0 rgba(0,0,0,.02); }
+    .stack{ display:flex; flex-direction:column; gap:var(--gap); }
+    .row{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+.row > .stack { min-width:0; flex:1 1 0%; }
+.name-row{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.name-row .name{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+.name-row .pill{ flex:0 0 auto; } .row .name{ flex:1 1 auto; min-width:0; } .pill{ flex:0 0 auto; }
+    .muted{ color:var(--muted); }
+    img.portrait{ width:120px; height:auto; border-radius:12px; border:1px solid var(--border); background:#fff; }
+    .name{ font-size:1.35rem; font-weight:800; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+    .pill{ display:inline-block; padding:.05rem .35rem; border-radius:999px; border:1px solid var(--border); font-weight:700; margin-left:.5rem; }
+    .name-line{ display:inline; }
+    .name-line .name{ display:inline; }
+    .name-line .pill{ display:inline-block; vertical-align:baseline; }
+    .pill.D{ background:#dbeafe; color:#1e3a8a; } .pill.R{ background:#fee2e2; color:#991b1b; } .pill.I{ background:#e5e7eb; color:#374151; }
+    .list{ margin:0; padding-left:1.1rem; }
+    .section-title{ font-weight:700; font-size:1.30rem; }
+    .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
+    .grid.two{ grid-template-columns: 1fr 1fr; }
+    .grid.three{ grid-template-columns: 1fr 1fr 1fr; } /* side-by-side on mobile */
+    .dial{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .dial svg{ display:block; width:120px; height:120px; }
+    #dbg { font-size:.9rem; }
+    #dbg .err { color:#991b1b; }
+    #dbg code { background:#fee2e2; padding:.1rem .25rem; border-radius:.25rem; }
+    .dial-note{ color:var(--muted); font-size:0.9rem; text-align:center; margin-top:0.5rem; }
+    .dial .label{ text-align:center; }
+
+    .pill.N{ background:#f3f4f6; color:#374151; }
+    .pill.P{ background:#ede9fe; color:#5b21b6; }
+
+    /* Mode tabs */
+    .tabs-2col { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 16px; }
+    .tabs-2col .tab { width: 100%; text-align: center; padding: 12px 14px; }
+    .tabs-2col .tab.active,
+    .tabs-2col .tab[aria-pressed="true"] {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent) inset;
+    }
+    .tabs-2col .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    </style>
+
+  <style>
+    /* Make the district inset stack above other content on small screens */
+    @media (max-width: 640px) {
+      #district-map-inset {
+        float: none !important;
+        width: 100% !important;
+        margin: 6px 0 10px 0 !important;
+        height: 200px; /* slightly taller on mobile for usability */
+      }
+    }
+  </style>
+
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Demosthenes</h1>
+      
+      
+      <p class="hint">Data-rich reports on your congresspeople</p>
+      <noscript><div class="card" style="margin:12px auto; max-width:720px; border-color:#ef4444; color:#991b1b;">
+        JavaScript is disabled or blocked by Content Security Policy. This page needs JS to fetch the member JSON.
+      </div></noscript>
+    </header>
+    <main>
+      <div class="container stack">
+        <nav class="nav" aria-label="Breadcrumb">
+          <a class="btn" href="index.html">← Back</a>
+          <span class="muted">Aggregate report</span>
+          
+        </nav>
+<section id="headerCard" class="card"><div class="section-title">The 119th Congress</div></section>
+
+
+</section>
+
+
+        <section class="card">
+          <div class="section-title">Voting Record</div></section>
+
+        <section class="card">
+          <div class="section-title">Signature Work</div></section>
+
+        <section class="card" id="finance"><div class="section-title">Campaign Finance Overview</div></section>
+
+        <section class="card" id="district-office"><div class="section-title">District and Contact Information</div></section>
+
+
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>
