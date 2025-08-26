@@ -185,7 +185,7 @@ function extractDistrictFromCensus(j) {
 </style><style>
 /* Ensure bottom card edges are flush with the viewport bottom */
 #inputCard.card{
-  bottom: -1px; /* push 1px past edge so corners/border aren't visible */
+  bottom: -12px; /* push 1px past edge so corners/border aren't visible */
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   border-bottom: 0;
@@ -203,7 +203,7 @@ function extractDistrictFromCensus(j) {
     transform: none;
     width: 100vw;      /* includes borders due to global border-box */
     max-width: none;   /* ignore column constraint */
-    bottom: 0;         /* do not push past the edge */
+    bottom: -12px;         /* do not push past the edge */
     border-bottom-left-radius: 12px;
     border-bottom-right-radius: 12px;
     border-bottom: 1px solid var(--border);
@@ -362,13 +362,62 @@ const goBtn = document.getElementById("go");
       return [m.first, m.middle, m.last].filter(Boolean).join(" ").trim() || (m.bioguide||"");
     }
     function searchMembersByName(query){
-      const q = normalizeName(query||"");
-      if (!q) return [];
-      return (Array.isArray(CURRENT)?CURRENT:[]).filter(m => {
-        const nm = normalizeName(memberDisplayName(m));
-        return nm.includes(q);
-      });
+  const q = normalizeName(query||"");
+  if (!q) return [];
+  const qTokens = q.split(" ").filter(Boolean);
+
+  function tokensForName(m){
+    return normalizeName(memberDisplayName(m)).split(" ").filter(Boolean);
+  }
+
+  function orderedSubseqMatch(qt, nt){
+    let i = 0, j = 0, matches = 0;
+    while (i < qt.length && j < nt.length){
+      const qtok = qt[i], ntok = nt[j];
+      if (ntok.startsWith(qtok)) { matches++; i++; j++; }
+      else { j++; }
     }
+    return matches === qt.length;
+  }
+
+  function bagMatch(qt, nt){
+    return qt.every(t => nt.some(n => n.startsWith(t)));
+  }
+
+  const nmNoSpaceQ = q.replace(/\s+/g,"");
+  const scored = (Array.isArray(CURRENT)?CURRENT:[]).map(m => {
+    const nt = tokensForName(m);
+    const nameNorm = nt.join(" ");
+    const nameNoSpace = nameNorm.replace(/\s+/g,"");
+
+    let score = 0;
+    if (nameNorm === q) score = 100;
+    else if (nameNorm.startsWith(q + " ")) score = 95;
+    else if (orderedSubseqMatch(qTokens, nt)) score = 90;
+    else if (bagMatch(qTokens, nt)) score = 80;
+    else if (nameNoSpace.includes(nmNoSpaceQ)) score = 70;
+
+    return { m, score };
+  }).filter(x => x.score > 0);
+
+  if (!scored.length && qTokens.length >= 2){
+    const rev = [...qTokens].reverse();
+    const nmNoSpaceQ2 = rev.join("");
+    const alt = (Array.isArray(CURRENT)?CURRENT:[]).map(m => {
+      const nt = tokensForName(m);
+      const nameNorm = nt.join(" ");
+      const nameNoSpace = nameNorm.replace(/\s+/g,"");
+      let score = 0;
+      if (orderedSubseqMatch(rev, nt)) score = 85;
+      else if (nameNoSpace.includes(nmNoSpaceQ2)) score = 65;
+      return { m, score };
+    }).filter(x => x.score > 0);
+    scored.push(...alt);
+  }
+
+  scored.sort((a,b)=> b.score - a.score);
+  return scored.map(x=>x.m);
+}
 
     function findMembers(where){
       const {state, district} = where;
@@ -565,8 +614,11 @@ goManual.addEventListener('click', function(){
       var res = document.getElementById('results');
       var card = document.getElementById('inputCard');
       if (!res || !card) return;
-      var h = card.getBoundingClientRect().height || 0;
-      var pad = Math.ceil(h + 16); // small visual gap
+      var rect = card.getBoundingClientRect();
+      var h = rect.height || 0;
+      var off = Math.max(0, rect.bottom - window.innerHeight);
+      var visible = Math.max(0, h - off);
+      var pad = Math.ceil(visible + 16); // small visual gap
       // Apply via inline style for strongest precedence
       res.style.paddingBottom = pad + 'px';
       // Also expose as CSS variable if needed elsewhere
