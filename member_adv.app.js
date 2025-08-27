@@ -529,36 +529,52 @@ var data;
 
 // --- tiny helper for "Show more / Show less" on a comma-separated line ---
 function _wireShowToggle(opts){
-  var root = opts.root;
-  var namesEl = opts.namesEl;
+  var root = opts.root, namesEl = opts.namesEl;
   var items = (opts.items||[]).slice();
-  var limitClosed = opts.limitClosed || 3;
-  var limitOpen   = opts.limitOpen   || 10;
-  var mutedClass  = opts.mutedClass  || 'muted';
+  var closed = (opts.limitClosed || 3);
+  var open   = (opts.limitOpen   || 10);
+  var expanded = false;
   if(!root || !namesEl) return;
+
   var toggle = root.querySelector('.show-toggle');
   if(!toggle){
     toggle = document.createElement('span');
-    toggle.className = 'show-toggle ' + mutedClass;
+    toggle.className = (opts.mutedClass ? (opts.mutedClass + ' ') : '') + 'show-toggle';
     toggle.style.cursor = 'pointer';
     toggle.style.marginLeft = '0.5ch';
-    toggle.textContent = 'Show more';
     root.appendChild(document.createTextNode(' '));
     root.appendChild(toggle);
   }
-  var render = function(open){
-    var slice = items.slice(0, open ? limitOpen : limitClosed);
+
+  // Accessibility + stacking so taps land
+  toggle.setAttribute('role','button');
+  toggle.setAttribute('tabindex','0');
+  toggle.style.position = 'relative';
+  toggle.style.zIndex = '3';
+  toggle.style.pointerEvents = 'auto';
+
+  function render(){
+    var slice = expanded ? items.slice(0, open) : items.slice(0, closed);
     namesEl.textContent = (slice.length ? slice.join(', ') : '—');
-    toggle.textContent = open ? 'Show less' : 'Show more';
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    toggle.style.display = (items.length > limitClosed) ? '' : 'none';
+    toggle.textContent = expanded ? 'Show less' : 'Show more';
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggle.style.display = (items.length > closed) ? '' : 'none';
   }
-  render(false);
-  if(!toggle._bound){
-    toggle._bound = true;
-    toggle.addEventListener('click', function(){
-      var open = toggle.getAttribute('aria-expanded') !== 'true';
-      render(open);
+  render();
+
+  if (!toggle.__boundToggle){
+    toggle.__boundToggle = true;
+    function onToggle(e){ if(e){ try{ e.preventDefault(); }catch(_){}} expanded = !expanded; render(); }
+
+    if (window.PointerEvent){
+      toggle.addEventListener('pointerup', onToggle, {passive:false});
+      // do not add click in this branch to avoid double-trigger on iOS
+    } else {
+      toggle.addEventListener('touchend', onToggle, {passive:false});
+      toggle.addEventListener('click', onToggle, {passive:false});
+    }
+    toggle.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); onToggle(e); }
     });
   }
 }
@@ -4339,7 +4355,8 @@ return true;
 
   // ---------- Campaign Finance Overview ----------
   function renderFinance(){
-  // Ensure body + containers under the Advanced card
+  if (window.__financeBuilt) return true;
+// Ensure body + containers under the Advanced card
   var bodyNode = ensureBody('adv-card-finance', 'adv-finance-body'); if (!bodyNode) return false;
   // Remove placeholder text that says "Advanced ... will appear here."
   Array.from(bodyNode.parentElement.querySelectorAll('.muted')).forEach(function(n){
@@ -4501,11 +4518,19 @@ return true;
 
               ctr1.innerHTML = '';
               if (pacs.length > 3){
-                var btn = document.createElement('button');
+                 var btn = document.createElement('button');
                 btn.className = 'btn';
                 btn.textContent = expanded ? 'Show less' : 'Show more';
-                btn.addEventListener('click', function(e){ e.preventDefault(); expanded = !expanded; renderPacs(); });
-                ctr1.appendChild(btn);
+                
+    (function(){
+      function on1(e){ if(e){ try{ e.preventDefault(); }catch(_){}} expanded = !expanded; renderPacs(); }
+      btn.setAttribute('role','button'); btn.setAttribute('tabindex','0');
+      if (window.PointerEvent) { btn.addEventListener('pointerup', on1, {passive:false}); }
+      btn.addEventListener('touchend', on1, {passive:false});
+      btn.addEventListener('click', on1, {passive:false});
+      btn.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on1(e);} });
+    })();
+    ctr1.appendChild(btn);
               }
             }
 
@@ -4556,11 +4581,19 @@ return true;
 
               ctr2.innerHTML = '';
               if (orgs.length > 3){
-                var btn2 = document.createElement('button');
+                 var btn2 = document.createElement('button');
                 btn2.className = 'btn';
                 btn2.textContent = expanded2 ? 'Show less' : 'Show more';
-                btn2.addEventListener('click', function(e){ e.preventDefault(); expanded2 = !expanded2; renderOrgs(); });
-                ctr2.appendChild(btn2);
+                
+    (function(){
+      function on2(e){ if(e){ try{ e.preventDefault(); }catch(_){}} expanded2 = !expanded2; renderOrgs(); }
+      btn2.setAttribute('role','button'); btn2.setAttribute('tabindex','0');
+      if (window.PointerEvent) { btn2.addEventListener('pointerup', on2, {passive:false}); }
+      btn2.addEventListener('touchend', on2, {passive:false});
+      btn2.addEventListener('click', on2, {passive:false});
+      btn2.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on2(e);} });
+    })();
+    ctr2.appendChild(btn2);
               }
             }
 
@@ -4594,6 +4627,7 @@ return true;
         }
       
   } catch(e){ /* non-fatal */ }
+  window.__financeBuilt = true;
   return true;
 }
 
@@ -4608,7 +4642,7 @@ return true;
       requestAnimationFrame(tick);
     }
     tick();
-    window.addEventListener('hashchange', function(){ setTimeout(function(){ attempts=0; tick(); }, 30); });
+    window.addEventListener('hashchange', function(){ window.__financeBuilt = false; setTimeout(function(){ attempts=0; tick(); }, 30); });
     var adv = document.getElementById('advCards');
     if (adv && !adv.__sigfinObs){
       var mo = new MutationObserver(function(){ setTimeout(function(){ attempts=0; tick(); }, 20); });
