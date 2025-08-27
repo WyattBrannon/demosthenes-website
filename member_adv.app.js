@@ -4369,12 +4369,15 @@ if (!content.__financeDelegated){
   (function(){
     var lastTS = 0;
     function handleToggle(e){
-      var t = e.target;
-      var btn = t && (t.closest ? t.closest('.finance-toggle-pacs, .finance-toggle-orgs') : null);
+      var el = e.target;
+      if (el && el.nodeType !== 1) el = el.parentElement;
+      var btn = el && el.closest ? el.closest('.finance-toggle-pacs, .finance-toggle-orgs') : null;
       if (!btn) return;
       if (e) { try { e.preventDefault(); e.stopPropagation(); } catch(_){} }
       var now = Date.now(); if (now - lastTS < 200) return; lastTS = now;
       var x = window.scrollX||0, y = window.scrollY||0;
+      if (e) { try { e.preventDefault(); e.stopPropagation(); } catch(_){} }
+      try{ btn.blur(); }catch(_){}
       if (btn.classList.contains('finance-toggle-pacs')){
         expanded = !expanded;
         renderPacs();
@@ -4541,18 +4544,29 @@ if (!content.__financeDelegated){
               ctr1.innerHTML = '';
               if (pacs.length > 3){
                  var btn = document.createElement('button');
-                btn.className = 'btn';
+                btn.className = 'btn finance-toggle-pacs';
                 btn.textContent = expanded ? 'Show less' : 'Show more';
                 
+    
     (function(){
-      function on1(e){ if(e){ try{ e.preventDefault(); }catch(_){}} expanded = !expanded; renderPacs(); }
-      btn.setAttribute('role','button'); btn.setAttribute('tabindex','0');
+      btn.setAttribute('role','button');
+      btn.setAttribute('tabindex','0');
+      var _last1=0;
+      function on1(e){
+        if(e){ try{ e.preventDefault(); e.stopPropagation(); }catch(_){ } }
+        var now = Date.now(); if (now - _last1 < 220) return; _last1 = now;
+        var x = window.scrollX||0, y = window.scrollY||0;
+        expanded = !expanded;
+        renderPacs();
+        window.scrollTo(x,y);
+      }
       if (window.PointerEvent) { btn.addEventListener('pointerup', on1, {passive:false}); }
       btn.addEventListener('touchend', on1, {passive:false});
       btn.addEventListener('click', on1, {passive:false});
-      btn.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on1(e);} });
+      btn.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on1(e); } });
     })();
     ctr1.appendChild(btn);
+    
               }
             }
 
