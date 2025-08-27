@@ -4585,13 +4585,23 @@ return true;
                 btn2.className = 'btn';
                 btn2.textContent = expanded2 ? 'Show less' : 'Show more';
                 
+    
     (function(){
-      function on2(e){ if(e){ try{ e.preventDefault(); }catch(_){}} expanded2 = !expanded2; renderOrgs(); }
-      btn2.setAttribute('role','button'); btn2.setAttribute('tabindex','0');
+      btn2.setAttribute('role','button');
+      btn2.setAttribute('tabindex','0');
+      var _last2=0;
+      function on2(e){
+        if(e){ try{ e.preventDefault(); e.stopPropagation(); }catch(_){ } }
+        var now = Date.now(); if (now - _last2 < 250) return; _last2 = now;
+        var x = window.scrollX||0, y = window.scrollY||0;
+        expanded2 = !expanded2;
+        renderOrgs();
+        window.scrollTo(x, y);
+      }
       if (window.PointerEvent) { btn2.addEventListener('pointerup', on2, {passive:false}); }
       btn2.addEventListener('touchend', on2, {passive:false});
       btn2.addEventListener('click', on2, {passive:false});
-      btn2.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on2(e);} });
+      btn2.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on2(e); } });
     })();
     ctr2.appendChild(btn2);
               }
