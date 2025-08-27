@@ -546,7 +546,7 @@ function _wireShowToggle(opts){
     root.appendChild(document.createTextNode(' '));
     root.appendChild(toggle);
   }
-  function render(open){
+  var render = function(open){
     var slice = items.slice(0, open ? limitOpen : limitClosed);
     namesEl.textContent = (slice.length ? slice.join(', ') : '—');
     toggle.textContent = open ? 'Show less' : 'Show more';
