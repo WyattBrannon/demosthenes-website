@@ -805,8 +805,7 @@ function ensureVotingRecordInset(){
       '.vr-inset-wrap{ position:relative; width:204px; height:200px; flex:0 0 204px; }',
       '.vr-axis-y{ position:absolute; left:-15px; top:90px; transform:translateY(-50%) rotate(-90deg); transform-origin:center; font-size:0.8em; color:rgba(0,0,0,0.55); }',
       '.vr-axis-x{ position:absolute; left:24px; top:184px; width:180px; text-align:center; font-size:0.8em; color:rgba(0,0,0,0.55); }'
-      , '.vr-similar{ margin-top: 12px; }'
-    ].join('\n');
+      , '.vr-similar{ margin-top: 12px; }', '.vr-inset, .vr-inset-wrap{ pointer-events: none; }', '.vr-similar{ position:relative; z-index:3; }', '.show-toggle{ pointer-events: auto; }'].join('');
     document.head.appendChild(st);
   }
   if(!document.getElementById('adv-vr-style-mobile')){
