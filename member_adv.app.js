@@ -2543,12 +2543,7 @@ function ensureAdvancedVoteTabs(){
         var btn = document.createElement('button');
         btn.className = 'btn';
         btn.textContent = expanded ? 'Show less' : 'Show more';
-        btn.addEventListener('click', function(e){
-          e.preventDefault(); e.stopPropagation();
-          var x=window.scrollX||0, y=window.scrollY||0;
-          try{ root.__expanded = !expanded; renderCurrent(); } finally { try{ window.scrollTo(x,y); }catch(_e){} }
-        });
-        ctr.appendChild(btn);
+        btn.className = 'btn finance-toggle-pacs'; ctr.appendChild(btn);
         root.appendChild(ctr);
       }
     }
@@ -4368,6 +4363,33 @@ return true;
   if (!none) { none = document.createElement('div'); none.id='adv-finance-none'; none.className='muted'; none.textContent='No information available.'; bodyNode.appendChild(none); }
   var content = document.getElementById('adv-finance-content');
   if (!content) { content = document.createElement('div'); content.id='adv-finance-content'; bodyNode.appendChild(content); }
+// Delegate finance toggle buttons to survive rerenders
+if (!content.__financeDelegated){
+  content.__financeDelegated = true;
+  (function(){
+    var lastTS = 0;
+    function handleToggle(e){
+      var t = e.target;
+      var btn = t && (t.closest ? t.closest('.finance-toggle-pacs, .finance-toggle-orgs') : null);
+      if (!btn) return;
+      if (e) { try { e.preventDefault(); e.stopPropagation(); } catch(_){} }
+      var now = Date.now(); if (now - lastTS < 200) return; lastTS = now;
+      var x = window.scrollX||0, y = window.scrollY||0;
+      if (btn.classList.contains('finance-toggle-pacs')){
+        expanded = !expanded;
+        renderPacs();
+      } else {
+        expanded2 = !expanded2;
+        renderOrgs();
+      }
+      window.scrollTo(x,y);
+    }
+    content.addEventListener('pointerup', handleToggle, {passive:false});
+    content.addEventListener('touchend', handleToggle, {passive:false});
+    content.addEventListener('click', handleToggle, {passive:false});
+  })();
+}
+
 
   // Use the exact same rendering logic as Basic mode, pointed at our Advanced containers
   try {
