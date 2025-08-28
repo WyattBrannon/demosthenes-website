@@ -4250,7 +4250,7 @@ if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctrl, billsWrap.next
 
     function renderSponsoredBills(){
       // keep ctrl visibility in sync
-      ctrl.style.display = 'block';
+      ctrl.style.display = 'none';
       billsWrap.innerHTML='';
       var list = billsAll.filter(function(b){ 
         if (!activePolicy) return true; 
@@ -4258,12 +4258,33 @@ if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctrl, billsWrap.next
         return pa === activePolicy; 
       });
 
+      // If no items, hide the entire sponsored bills section (and its control) and bail
+      if (!list.length){
+        try{ billsWrap.style.display = 'none'; }catch(_){}
+        try{ ctrl.style.display = 'none'; }catch(_){}
+        return;
+      } else {
+        try{ billsWrap.style.display = ''; }catch(_){}
+      }
+
       var maxDefault = 3;
       var maxExpanded = 10;
       var show = list.slice(0, expandedSB ? Math.min(maxExpanded, list.length) : Math.min(maxDefault, list.length));
       // Show control only when there are more than default items
-      if (list.length <= maxDefault){ ctrl.style.display='none'; expandedSB=false; btn.textContent='Show more'; btn.setAttribute('aria-expanded','false'); }
-      else { ctrl.style.display='block'; }
+      if (list.length > maxDefault){
+        ctrl.style.display = 'block';
+        if (expandedSB){
+          btn.textContent = 'Show less';
+          btn.setAttribute('aria-expanded','true');
+        } else {
+          btn.textContent = 'Show more';
+          btn.setAttribute('aria-expanded','false');
+        }
+      } else {
+        ctrl.style.display = 'none';
+        btn.textContent = 'Show more';
+        btn.setAttribute('aria-expanded','false');
+      }
       show.forEach(function(b){
         var type = fmtType(b && b.billType);
         var num  = String(b && (b.number || b.bill) || '');
