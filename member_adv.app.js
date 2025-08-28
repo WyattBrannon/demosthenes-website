@@ -759,7 +759,7 @@ var id = data.identity || {};
       var img=new Image(); img.className='portrait'; img.alt=(displayName||'')+' portrait';
       img.crossOrigin='anonymous';
       img.src=(DB+'/images/'+bioguide+'.jpg');
-      img.onerror=function(){ var fb=document.createElement('div'); fb.className='muted'; fb.textContent='Portrait unavailable.'; if(img.parentNode) img.parentNode.replaceChild(fb, img); };
+      img.onerror=function(){ var fb=document.createElement('div'); fb.className='muted'; fb.textContent=''; if(img.parentNode) img.parentNode.replaceChild(fb, img); };
 
       var chamber = (function(){ var t=latestTermTypeFromBlock(block) || (id.chamber || ''); if(t==='sen') return 'senate'; if(t==='rep') return 'house'; return t; })();
 ;
@@ -3611,9 +3611,9 @@ try{
 
     var specs = [
       { path: ['race','white'], invert: true,  label: 'Non-White Population' },
-      { path: ['age','under_18'], invert: false, label: 'Minor Population' },
+      { path: ['age','under_18'], invert: false, label: 'Under-18 Population' },
       { path: ['income','200k_plus'], invert: false, label: '>$200k Income Population' },
-      { path: ['education','bachelors_plus'], invert: false, label: 'Degreed Population' },
+      { path: ['education','bachelors_plus'], invert: false, label: 'College Graduate Population' },
       { path: ['unemployment_percent'], invert: false, label: 'Unemployed Population' },
       { path: ['health_insurance_percent'], invert: true,  label: 'Uninsured Population' }
     ];
