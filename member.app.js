@@ -1372,3 +1372,41 @@ renderKeyVotes();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();
+
+;(() => {
+  // Inject responsive styles for header portrait and Voting Record dials
+  function injectMemberResponsiveStyles(){
+    if (document.getElementById('member-responsive-style')) return;
+    var st = document.createElement('style');
+    st.id = 'member-responsive-style';
+    st.textContent = [
+      /* Header: on mobile, stack portrait above text & center it; desktop retains existing 2-col layout */
+      '@media (max-width: 720px){',
+      '  #headerCard .row{ display:flex; flex-direction:column; align-items:center; }',
+      '  #headerCard .row img.portrait{ display:block; margin:0 auto 10px; }',
+      '  #headerCard .row > div{ width:100%; }',
+      '}',
+      /* Voting Record dials: 3 columns on desktop, 2 columns on mobile */
+      '#dials.vr-dials{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; align-items:start; }',
+      '@media (max-width: 720px){ #dials.vr-dials{ grid-template-columns:repeat(2, minmax(0,1fr)); } }',
+      /* Ensure each dial centers its contents and subtext nicely */
+      '#dials.vr-dials .dial{ display:flex; flex-direction:column; align-items:center; }'
+    ].join('\\n');
+    document.head.appendChild(st);
+  }
+
+  // Mark the Voting Record dials container so styles can target it without affecting other dials
+  function tagVotingRecordDials(){
+    var dials = document.getElementById('dials');
+    if (dials && !dials.classList.contains('vr-dials')) {
+      dials.classList.add('vr-dials');
+    }
+  }
+
+  function initResponsive(){
+    injectMemberResponsiveStyles();
+    tagVotingRecordDials();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initResponsive);
+  else initResponsive();
+})();
