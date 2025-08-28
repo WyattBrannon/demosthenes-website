@@ -1410,3 +1410,51 @@ renderKeyVotes();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initResponsive);
   else initResponsive();
 })();
+
+;(() => {
+  // Robust, specific, and !important-scoped responsive tweaks.
+  function injectMemberResponsiveStyles(){
+    if (document.getElementById('member-responsive-style')) return;
+    var st = document.createElement('style');
+    st.id = 'member-responsive-style';
+    st.textContent = [
+      /* Header: <=600px stacks the portrait above and centers it; ensure image scales down */
+      '@media (max-width: 600px){',
+      '  #headerCard .row{ display:flex !important; flex-direction:column !important; align-items:center !important; }',
+      '  #headerCard .row img.portrait{ display:block !important; margin:0 auto 10px !important; max-width: 60vw !important; height:auto !important; }',
+      '  #headerCard .row > div{ width:100% !important; }',
+      '}',
+      /* Voting Record dials: desktop = 3 columns; <=720px = 2 columns */
+      '#dials.vr-dials{ display:grid !important; grid-template-columns:repeat(3, minmax(0,1fr)) !important; gap:12px !important; align-items:start !important; }',
+      '@media (max-width: 720px){ #dials.vr-dials{ grid-template-columns:repeat(2, minmax(0,1fr)) !important; } }',
+      '#dials.vr-dials .dial{ display:flex !important; flex-direction:column !important; align-items:center !important; }'
+    ].join('\\n');
+    document.head.appendChild(st);
+  }
+
+  // Ensure we tag the Voting Record dials even if #dials is created later
+  function tagVotingRecordDialsIfReady(root){
+    var dials = (root || document).getElementById ? (root || document).getElementById('dials') : document.getElementById('dials');
+    if (dials && !dials.classList.contains('vr-dials')) {
+      dials.classList.add('vr-dials');
+      return true;
+    }
+    return false;
+  }
+
+  function initResponsive(){
+    injectMemberResponsiveStyles();
+    if (!tagVotingRecordDialsIfReady(document)){
+      // Observe for late insertion
+      var mo = new MutationObserver(function(muts){
+        for (var i=0;i<muts.length;i++){
+          var t = muts[i].target || document;
+          if (tagVotingRecordDialsIfReady(t)){ try{ mo.disconnect(); }catch(e){} break; }
+        }
+      });
+      try { mo.observe(document.documentElement || document.body, { childList:true, subtree:true }); } catch(e){}
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initResponsive);
+  else initResponsive();
+})();
