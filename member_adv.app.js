@@ -795,6 +795,68 @@ var id = data.identity || {};
       row.appendChild(img); row.appendChild(right);
       header.appendChild(row);
       try{ window.__memberData = data; _updateCurrentIdeologyLine(data);   updateVotingInsetWithNominate(data); try{ ensurePartyUnityInset(); }catch(e){} try{ ensurePartyUnityInset(); }catch(e){}
+
+(function ensureAdvPersonalList(){
+  try{
+    var card = document.getElementById('adv-card-personal');
+    if(!card) return;
+    var title = card.querySelector('.section-title');
+    if(!title) return;
+
+    // Determine data source (advanced scope can use global or local)
+    var md = (window && (window.__memberData || window.memberData)) || (typeof data!=='undefined' ? data : null);
+    var txt = (md && typeof md.profileText === 'string') ? md.profileText.trim() : '';
+
+    // Split by semicolons into items
+    var items = [];
+    if (txt) {
+      items = txt.split(';').map(function(s){ return String(s||'').trim(); }).filter(function(s){ return s.length>0; });
+    }
+
+    // Remove prior list if any (rebuild cleanly)
+    var lid = 'adv-personal-list';
+    var existing = card.querySelector('#'+lid);
+    if (existing) { try{ existing.remove(); }catch(e){} }
+
+    // Toggle placeholder
+    var placeholder = (function(){
+      // any .muted sibling following title acts as placeholder for this card
+      var nxt = title.nextElementSibling;
+      if(nxt && nxt.classList && nxt.classList.contains('muted')) return nxt;
+      return null;
+    })();
+
+    if(!items.length){
+      if(placeholder) placeholder.style.display='';
+      return;
+    }
+    if(placeholder) placeholder.style.display='none';
+
+    var ul = document.createElement('ul');
+    ul.id = lid;
+    ul.style.marginTop = '6px';
+    ul.style.fontSize = '1.06em';
+    ul.style.lineHeight = '1.45';
+
+    items.forEach(function(t, idx){
+      var li = document.createElement('li');
+      var txtItem = t;
+      if (txtItem) { txtItem = txtItem.charAt(0).toUpperCase() + txtItem.slice(1); }
+      if (idx < items.length - 1) {
+        if (!/;\s*$/.test(txtItem)) txtItem += ';';
+      } else {
+        // last item: ensure no trailing semicolon
+        txtItem = txtItem.replace(/;\s*$/, '');
+      }
+      li.textContent = txtItem;
+      li.style.marginBottom = '4px';
+      ul.appendChild(li);
+    });
+
+    title.insertAdjacentElement('afterend', ul);
+  }catch(e){ /* fail-soft */ }
+})();
+
       try{ _updateSimilarLine(data); }catch(e){}
       }catch(e){ console && console.warn && console.warn('Nominate inset failed:', e); }
     }).catch(function(err){
@@ -4231,7 +4293,7 @@ body.appendChild(sbTitle);
     // Expand/collapse state
     var expandedSB = false;
     var oldCtr=document.getElementById('sponsored-bills-ctr'); if(oldCtr&&oldCtr.closest&&oldCtr.closest('#advCards')) oldCtr.remove();
-var ctrl=document.createElement('div'); ctrl.id='sponsored-bills-ctr'; ctrl.style.paddingTop='8px';
+var ctrl=document.createElement('div'); ctrl.id='sponsored-bills-ctr'; ctrl.style.paddingTop='8px'; ctrl.style.display='none';
 var btn=document.createElement('button'); btn.className='btn'; btn.textContent= expandedSB ? 'Show less' : 'Show more';
 btn.addEventListener('click', function(e){ e.preventDefault(); expandedSB=!expandedSB; btn.textContent = expandedSB ? 'Show less' : 'Show more'; renderSponsoredBills(); });
 ctrl.appendChild(btn);
@@ -4255,7 +4317,18 @@ if (billsWrap.parentNode) billsWrap.parentNode.insertBefore(ctrl, billsWrap.next
       var list = billsAll.filter(function(b){ 
         if (!activePolicy) return true; 
         var pa = String(b && b.policy_area || '').trim(); 
-        return pa === activePolicy; 
+        
+      // Hide entire Sponsored Bills section when there are no items
+      if (!list.length){
+        try{ billsWrap.style.display = 'none'; }catch(_){ }
+        try{ ctrl.style.display = 'none'; }catch(_){ }
+        try{ sbTitle.style.display = 'none'; }catch(_){ }
+        return;
+      } else {
+        try{ billsWrap.style.display = ''; }catch(_){ }
+        try{ sbTitle.style.display = ''; }catch(_){ }
+      }
+return pa === activePolicy; 
       });
 
       // If no items, hide the entire sponsored bills section (and its control) and bail
