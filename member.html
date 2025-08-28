@@ -68,7 +68,20 @@
       box-shadow: 0 0 0 1px var(--accent) inset;
     }
     .tabs-2col .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    </style>
+    
+
+    /* Responsive tweaks */
+    @media (max-width: 450px) {
+      /* Header portrait above & centered on mobile */
+      #headerCard .row { flex-direction: column; align-items: center; }
+      #headerCard .row img.portrait { margin: 0 auto 10px; }
+    }
+    @media (max-width: 600px) {
+      /* Voting Record dials: 2 columns on mobile */
+      #dials.grid.three { grid-template-columns: 1fr 1fr; }
+    }
+
+</style>
 
   <style>
     /* Make the district inset stack above other content on small screens */
