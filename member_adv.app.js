@@ -222,7 +222,7 @@ function renderAdvCountyPres2020(){
 
 onEachFeature: function(feature, lyr){
   var p = feature && feature.properties || {};
-  var label = (p.county || p.NAME || p.name || 'County');
+  var label = (p.county || p.NAME || p.name || p.county_name || p.county_name_x || 'County');
 
   // Read margin_pct_2020_pres and normalize to absolute percentage
   var raw = (p.margin_pct_2020_pres != null) ? p.margin_pct_2020_pres : null;
