@@ -406,7 +406,7 @@ if(!clipped.length){
                 },
                 onEachFeature: function(feature, lyr){
                   var p = feature && feature.properties || {};
-                  var label = (p.county || p.NAME || p.name || p.county_name || 'County');
+                  var label = (p.county || p.NAME || p.name || p.county_name || p.county_name_x || 'County');
 
                   // Optional one-time debug: list available keys to console to verify field names
                   if (!window.__ADV_LOGGED_HOUSE_KEYS__) {
@@ -2809,7 +2809,7 @@ try{
       if(!p) return false;
       const keys = Object.keys(p);
       const wanted = [
-        'county_fips','county','NAME','name','county_name','district',
+        'county_fips','county','county_name','district',
         'two_party_2020_pres','margin_pct_2020_pres','color_2020_pres',
         'two_party_2022_house','margin_pct_2022_house','color_2022_house'
       ];
@@ -2835,7 +2835,7 @@ try{
 
   // Label helper
   function countyLabel(p){
-    return p.county || p.NAME || p.name || p.county_name || 'County';
+    return p.county || p.NAME || p.name || p.county_name || p.county_name_x || 'County';
   }
 
   const Manager = {
