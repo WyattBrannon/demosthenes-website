@@ -4601,9 +4601,71 @@ if (!content.__financeDelegated){
           summary.textContent = cname + ' has raised ' + fmtMoney(receiptsVal) + ' this cycle thus far.';
           financeContent.appendChild(summary);
 
+// ---- Donations Tabs (Committees / Employers / Lobbyists) ----
+var _donTabs = document.createElement('div');
+_donTabs.className = 'tabs-2col';
+_donTabs.style.gridTemplateColumns = '1fr 1fr 1fr';
+
+var _btnCommittees = document.createElement('button');
+_btnCommittees.className = 'btn tab active';
+_btnCommittees.type = 'button';
+_btnCommittees.setAttribute('aria-pressed','true');
+_btnCommittees.textContent = 'Committees';
+
+var _btnEmployers = document.createElement('button');
+_btnEmployers.className = 'btn tab';
+_btnEmployers.type = 'button';
+_btnEmployers.setAttribute('aria-pressed','false');
+_btnEmployers.textContent = 'Employers';
+
+var _btnLobbyists = document.createElement('button');
+_btnLobbyists.className = 'btn tab';
+_btnLobbyists.type = 'button';
+_btnLobbyists.setAttribute('aria-pressed','false');
+_btnLobbyists.textContent = 'Lobbyists';
+
+_donTabs.appendChild(_btnCommittees);
+_donTabs.appendChild(_btnEmployers);
+_donTabs.appendChild(_btnLobbyists);
+_donTabs.style.marginTop = '12px';
+financeContent.appendChild(_donTabs);
+
+// Wrappers for tab content
+var _wrapCommittees = document.createElement('div');
+var _wrapEmployers = document.createElement('div');
+var _wrapLobbyists = document.createElement('div');
+_wrapCommittees.id = 'donations-tab-committees';
+_wrapEmployers.id = 'donations-tab-employers';
+_wrapLobbyists.id = 'donations-tab-lobbyists';
+_wrapEmployers.style.display = 'none';
+_wrapLobbyists.style.display = 'none';
+
+financeContent.appendChild(_wrapCommittees);
+financeContent.appendChild(_wrapEmployers);
+financeContent.appendChild(_wrapLobbyists);
+
+function _switchDonTab(which){
+  var map = { committees: _wrapCommittees, employers: _wrapEmployers, lobbyists: _wrapLobbyists };
+  Object.keys(map).forEach(function(k){
+    map[k].style.display = (k===which)?'':'none';
+  });
+  _btnCommittees.classList.toggle('active', which==='committees');
+  _btnEmployers.classList.toggle('active', which==='employers');
+  _btnLobbyists.classList.toggle('active', which==='lobbyists');
+  _btnCommittees.setAttribute('aria-pressed', which==='committees'?'true':'false');
+  _btnEmployers.setAttribute('aria-pressed', which==='employers'?'true':'false');
+  _btnLobbyists.setAttribute('aria-pressed', which==='lobbyists'?'true':'false');
+}
+
+_btnCommittees.addEventListener('click', function(){ _switchDonTab('committees'); }, {passive:false});
+_btnEmployers.addEventListener('click', function(){ _switchDonTab('employers'); }, {passive:false});
+_btnLobbyists.addEventListener('click', function(){ _switchDonTab('lobbyists'); }, {passive:false});
+
+
+
           // ----- Major Committee Donations (with toggle styled like Key Votes) -----
           var nextTitle = document.createElement('div'); nextTitle.className = 'section-title'; nextTitle.style.marginTop='12px'; nextTitle.textContent='Major Committee Donations';
-          financeContent.appendChild(nextTitle);
+          _wrapCommittees.appendChild(nextTitle);
 
           var pacs = (((fec||{}).top_contributors||{}).top_contributors||{}).pacs || [];
           if (Array.isArray(pacs) && pacs.length){
@@ -4668,8 +4730,8 @@ if (!content.__financeDelegated){
             ctr1.style.paddingTop = '8px';
 
             renderPacs();
-            financeContent.appendChild(listWrap);
-            financeContent.appendChild(ctr1);
+            _wrapCommittees.appendChild(listWrap);
+            _wrapCommittees.appendChild(ctr1);
           } else {
             var none = document.createElement('div'); none.className='muted'; none.style.textAlign='left'; none.textContent='No committee donations available.';
             financeContent.appendChild(none);
@@ -4677,7 +4739,7 @@ if (!content.__financeDelegated){
 
           // ----- Major Employers of Donors (with toggle styled like Key Votes) -----
           var nextTitle2 = document.createElement('div'); nextTitle2.className = 'section-title'; nextTitle2.style.marginTop='12px'; nextTitle2.textContent='Major Employers of Donors';
-          financeContent.appendChild(nextTitle2);
+          _wrapEmployers.appendChild(nextTitle2);
 
           var orgs = (((fec||{}).top_contributors||{}).top_contributors||{}).orgs || [];
           if (Array.isArray(orgs) && orgs.length){
@@ -4741,8 +4803,89 @@ if (!content.__financeDelegated){
             ctr2.style.paddingTop = '8px';
 
             renderOrgs();
-            financeContent.appendChild(listWrap2);
-            financeContent.appendChild(ctr2);
+            _wrapEmployers.appendChild(listWrap2);
+            _wrapEmployers.appendChild(ctr2);
+
+// ----- Lobbyists (from member.lobbying_contributions) -----
+var lcontribs = ((data||{}).lobbying_contributions) || [];
+var nextTitle3 = document.createElement('div');
+nextTitle3.className = 'section-title';
+nextTitle3.style.marginTop = '12px';
+nextTitle3.textContent = 'Major Lobbyist Donations';
+_wrapLobbyists.appendChild(nextTitle3);
+
+if (Array.isArray(lcontribs) && lcontribs.length){
+  // sort by amount_usd desc
+  lcontribs.sort(function(a,b){ 
+    var av = (a && (a.amount_usd||a.amountUSD||a.amount)) || 0;
+    var bv = (b && (b.amount_usd||b.amountUSD||b.amount)) || 0;
+    return (bv||0) - (av||0);
+  });
+  var listWrap3 = document.createElement('div');
+  listWrap3.id = 'lobbyist-list-wrap';
+
+  var expanded3 = false;
+  function renderLobby(){
+    listWrap3.innerHTML = '';
+    var limit = expanded3 ? Math.min(10, lcontribs.length) : Math.min(3, lcontribs.length);
+    var slice = lcontribs.slice(0, limit);
+    slice.forEach(function(l){
+      var name = (l && (l.organization || l.org || l.pacs || l.honoree)) || 'Unknown organization';
+      var amtN = (l && (l.amount_usd||l.amountUSD||l.amount)) || 0;
+      var dollars = fmtMoney(num(amtN));
+      var row = document.createElement('div');
+      row.className = 'stack';
+      row.style.borderTop = '1px solid var(--border)';
+      row.style.paddingTop = '10px';
+      row.style.paddingBottom = '10px';
+      row.style.lineHeight = '1.35';
+      var head = document.createElement('div');
+      var strong = document.createElement('strong'); strong.textContent = String(name); head.appendChild(strong);
+      var sep = document.createTextNode(' \u2022 ');
+      head.appendChild(sep);
+      var amt = document.createElement('span'); amt.textContent = dollars; head.appendChild(amt);
+      row.appendChild(head);
+      _wrapLobbyists.appendChild(row);
+      listWrap3.appendChild(row);
+    });
+  }
+
+  var ctr3 = document.createElement('div');
+  ctr3.style.paddingTop = '8px';
+  var btn3 = document.createElement('button');
+  btn3.className = 'btn finance-toggle-lobbyists';
+  btn3.textContent = 'Show ' + (expanded3 ? 'less' : 'more');
+
+  (function(){
+    btn3.setAttribute('role','button');
+    btn3.setAttribute('tabindex','0');
+    var _last3=0;
+    function on3(e){
+      if(e){ try{ e.preventDefault(); e.stopPropagation(); }catch(_){ } }
+      var now = Date.now(); if (now - _last3 < 250) return; _last3 = now;
+      var x = window.scrollX||0, y = window.scrollY||0;
+      expanded3 = !expanded3;
+      btn3.textContent = expanded3 ? 'Show less' : 'Show more';
+      renderLobby();
+      window.scrollTo(x, y);
+    }
+    if (window.PointerEvent) { btn3.addEventListener('pointerup', on3, {passive:false}); }
+    btn3.addEventListener('touchend', on3, {passive:false});
+    btn3.addEventListener('click', on3, {passive:false});
+    btn3.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); on3(e); } });
+  })();
+
+  renderLobby();
+  _wrapLobbyists.appendChild(listWrap3);
+  ctr3.appendChild(btn3);
+  _wrapLobbyists.appendChild(ctr3);
+} else {
+  var none3 = document.createElement('div');
+  none3.className = 'muted';
+  none3.textContent = 'No data available.';
+  _wrapLobbyists.appendChild(none3);
+}
+;
           } else {
             var none2 = document.createElement('div'); none2.className='muted'; none2.style.textAlign='left'; none2.textContent='No employer donations available.';
             financeContent.appendChild(none2);
