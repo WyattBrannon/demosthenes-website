@@ -4821,7 +4821,7 @@ summaryLine.style.marginTop = '8px';
 summaryLine.style.fontSize = '0.95rem';
 summaryLine.style.textAlign = 'center';
 if (lobbySum > 0) {
-  summaryLine.textContent = cname + ' has received ' + fmtMoney(lobbySum) + ' from lobbyists this year thus far.';
+  summaryLine.textContent = cname + ' has received ' + fmtMoney(lobbySum) + ' from lobbyists this year thus far. This may include funds separate from campaign donations.';
   _wrapLobbyists.appendChild(summaryLine);
 } else {
   var none = document.createElement('div');
