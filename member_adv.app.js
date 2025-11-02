@@ -4811,7 +4811,26 @@ var lcontribs = ((data||{}).lobbying_contributions) || [];
 var nextTitle3 = document.createElement('div');
 nextTitle3.className = 'section-title';
 nextTitle3.style.marginTop = '12px';
-nextTitle3.textContent = 'Major Lobbyist Donations';
+nextTitle3.textContent = 'Major Lobbyist Donations'
+// --- Lobbyist donations summary line ---
+var id = (data.identity || {});
+var cname = (id.name || id.display_name || id.official_full || id.full || (id.first && id.last && (id.first + ' ' + id.last))) || 'This member';
+var lobbySum = (data.lobbying_sum || 0);
+var summaryLine = document.createElement('div');
+summaryLine.style.marginTop = '8px';
+summaryLine.style.fontSize = '0.95rem';
+summaryLine.style.textAlign = 'center';
+if (lobbySum > 0) {
+  summaryLine.textContent = cname + ' has received ' + fmtMoney(lobbySum) + ' from lobbyists this year thus far.';
+  _wrapLobbyists.appendChild(summaryLine);
+} else {
+  var none = document.createElement('div');
+  none.className = 'muted';
+  none.style.textAlign = 'left';
+  none.textContent = 'No lobbyist donations available.';
+  _wrapLobbyists.appendChild(none);
+}
+;
 _wrapLobbyists.appendChild(nextTitle3);
 
 if (Array.isArray(lcontribs) && lcontribs.length){
@@ -4900,7 +4919,7 @@ if (Array.isArray(lcontribs) && lcontribs.length){
               f3.className = 'muted data-note-finance';
               f3.style.marginTop = '10px';
               f3.style.textAlign = 'left';
-              f3.textContent = 'Data from FEC.gov • Updated Quarterly';
+              f3.textContent = 'Data from FEC.gov and Senate.gov • Updated Quarterly and Semiannually';
               financeCard.appendChild(f3);
             }
           } catch(e) { /* ignore */ }
