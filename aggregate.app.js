@@ -513,7 +513,8 @@ st.textContent = `
       return fetch(url).then(function(r){
         if(!r.ok) throw new Error("HTTP " + r.status + " at " + url);
         return r.text();
-      }).then(function(t){
+      }
+).then(function(t){
         try { return JSON.parse(t); }
         catch(e1){
           var s = _sanitizeJsonNumbers(t);
@@ -618,6 +619,11 @@ st.textContent = `
             });
 frag.appendChild(dot);
 }
+// Expose globally for Data Visualizer
+window.fetchMemberAggregate = fetchMemberAggregate;
+
+
+
           overlay.appendChild(frag);
           console.debug('[aggregate] plotted pts', overlay.querySelectorAll('.pt').length);
           
@@ -1020,4 +1026,304 @@ var S = Math.max(140, Math.min(280, Math.floor((colW - 96) / 2)));
     }
   });
 
+
+  // --- Data Visualizer (non-invasive) ---
+  (function DataVisualizerModule(){
+    try {
+      var card = document.getElementById("data-visualizer");
+      if (!card) return;
+
+      // Tabs
+      var tabUni = document.getElementById("dv-tab-uni");
+      var tabBi  = document.getElementById("dv-tab-bi");
+      var secUni = document.getElementById("dv-uni");
+      var secBi  = document.getElementById("dv-bi");
+
+      function setTab(which) {
+  var isUni = (which === "uni");
+  if (tabUni && tabBi && secUni && secBi) {
+    tabUni.classList.toggle("active", isUni);
+    tabBi.classList.toggle("active", !isUni);
+    tabUni.setAttribute("aria-pressed", String(isUni));
+    tabBi.setAttribute("aria-pressed", String(!isUni));
+    secUni.style.display = isUni ? "block" : "none";
+    secBi.style.display = isUni ? "none" : "block";
+  }
+}
+      tabUni && tabUni.addEventListener("click", function(){ setTab("uni"); });
+      tabBi  && tabBi.addEventListener("click",  function(){ setTab("bi");  });
+
+      // Controls
+      var uniVar = document.getElementById("dv-uni-var");
+      var uniBin = document.getElementById("dv-uni-bin");
+      var uniCanvas = document.getElementById("dv-uni-chart");
+      var biX = document.getElementById("dv-bi-x");
+      var biY = document.getElementById("dv-bi-y");
+      var biCanvas = document.getElementById("dv-bi-chart");
+
+      // Display current bin width
+      var binLabel = (function(){
+        var lbl = uniBin && uniBin.closest("label");
+        if (!lbl) return null;
+        var s = document.createElement("span");
+        s.style.marginLeft = "8px";
+        s.style.fontVariantNumeric = "tabular-nums";
+        lbl.appendChild(s);
+        return s;
+      })();
+
+      // Lazy-load Chart.js if needed
+      function ensureChartJs(){
+        return new Promise(function(resolve, reject){
+          if (window.Chart && typeof window.Chart === "function") return resolve();
+          var s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/chart.js";
+          s.async = true;
+          s.onload = function(){ resolve(); };
+          s.onerror = function(){ reject(new Error("Failed to load Chart.js")); };
+          document.head.appendChild(s);
+        });
+      }
+
+      function get(obj, path){
+        try{
+          return path.split(".").reduce(function(acc, k){ return (acc && acc[k] !== undefined) ? acc[k] : undefined; }, obj);
+        }catch(e){ return undefined; }
+      }
+
+      function partyLetter(p){
+        if (!p) return "I";
+        var s = String(p).toLowerCase();
+        if (s.startsWith("d")) return "D";
+        if (s.startsWith("r")) return "R";
+        return s.toUpperCase().slice(0,1) || "I";
+      }
+
+      function namePartyState(m){
+        var nm = (m.identity && m.identity.name) || m.name || m.member_name || "Unknown";
+        var st = (m.identity && m.identity.state) || m.state || "";
+        var p  = (m.identity && m.identity.party) || m.party || "";
+        return nm + " " + partyLetter(p) + "-" + (String(st||"")).toUpperCase();
+      }
+
+      // Numeric paths (top-level + nested up to depth 3)
+      function numericPathsForMember(m){
+        var paths = [];
+        function addPath(prefix, obj, depth){
+          if (obj === null || obj === undefined) return;
+          if (typeof obj !== "object") return;
+          if (depth > 3) return;
+          if (Array.isArray(obj)) return;
+          Object.keys(obj).forEach(function(k){
+            var v = obj[k];
+            var path = prefix ? (prefix + "." + k) : k;
+            if (typeof v === "number" && Number.isFinite(v)) {
+              paths.push(path);
+            } else if (v && typeof v === "object") {
+              addPath(path, v, depth+1);
+            }
+          });
+        }
+        addPath("", m, 0);
+        paths = paths.filter(function(p){
+      return !/^identity(\.|$)/.test(p)
+          && !/^bioguide_id$/.test(p)
+          && !/^id$/.test(p)
+          && !/^fec\.top_contributors\./.test(p);
+    });
+        return Array.from(new Set(paths)).sort();
+      }
+
+      function unionNumericPaths(members){
+        var set = new Set();
+        for (var i=0;i<members.length;i++){
+          numericPathsForMember(members[i]).forEach(set.add, set);
+          if (set.size > 0 && i > 300) break;
+        }
+        return Array.from(set).sort();
+      }
+
+      // Histogram utilities
+      function computeBinsByWidth(values, width){
+        var finite = values.filter(function(v){ return Number.isFinite(v); });
+        if (!finite.length || !(width > 0)) return { edges: [], counts: [], min: NaN, max: NaN, width: width };
+        var min = Math.min.apply(null, finite);
+        var max = Math.max.apply(null, finite);
+        if (min === max) { min -= 0.5; max += 0.5; }
+        var edges = [];
+        for (var e = min; e < max + width; e += width) edges.push(e);
+        var counts = new Array(Math.max(1, edges.length - 1)).fill(0);
+        for (var j=0;j<finite.length;j++){
+          var x = finite[j];
+          var idx = Math.min(counts.length-1, Math.max(0, Math.floor((x - min) / width)));
+          counts[idx]++;
+        }
+        return { edges: edges, counts: counts, min: min, max: max, width: width };
+      }
+
+      // Renderers
+      var uniChart = null, biChart = null;
+
+      function renderHistogram(values, label, width){
+        if (!uniCanvas) return;
+        var cfg = computeBinsByWidth(values, width);
+        var labels = [];
+        for (var i=0;i<cfg.counts.length;i++){
+          var a = cfg.edges[i], b = cfg.edges[i+1];
+          labels.push(a.toFixed(2) + "–" + b.toFixed(2));
+        }
+        var ds = { label: label, data: cfg.counts };
+        if (uniChart) { try{ uniChart.destroy(); }catch(e){} }
+        uniChart = new Chart(uniCanvas.getContext("2d"), {
+          type: "bar",
+          data: { labels: labels, datasets: [ds] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+          aspectRatio: 2,
+            scales: {
+              x: { title: { display: true, text: label } },
+              y: { title: { display: true, text: "Count" }, beginAtZero: true, ticks: { precision:0 } }
+            }
+          }
+        });
+      }
+
+      function renderScatter(points, xLabel, yLabel, bounds){
+        if (!biCanvas) return;
+        if (biChart) { try{ biChart.destroy(); }catch(e){} }
+        biChart = new Chart(biCanvas.getContext("2d"), {
+          type: "scatter",
+          data: { datasets: [{ label: xLabel + " vs " + yLabel, data: points, pointRadius: 3 }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            aspectRatio: 2,
+            parsing: false,
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(ctx){
+                    var p = ctx.raw || {};
+                    return (p._label || "") + ": (" + xLabel + "=" + Number(p.x).toFixed(2) + ", " + yLabel + "=" + Number(p.y).toFixed(2) + ")";
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: xLabel },
+                min: bounds?.xMin,
+                max: bounds?.xMax
+              },
+              y: {
+                title: { display: true, text: yLabel },
+                min: bounds?.yMin,
+                max: bounds?.yMax
+              }
+            }
+          }
+        });
+      }
+
+      // Hook into existing aggregate data (function exists in this IIFE scope)
+      function initWithMembers(members){
+        if (!Array.isArray(members) || !members.length) return;
+
+        var vars = unionNumericPaths(members);
+        function fillSelect(sel){
+          if (!sel) return;
+          sel.innerHTML = "";
+          vars.forEach(function(v){ var opt = document.createElement("option"); opt.value = v; opt.textContent = v; sel.appendChild(opt); });
+        }
+        fillSelect(uniVar); fillSelect(biX); fillSelect(biY);
+
+        function valuesForPath(path) {
+      return members.map(function(m){
+        var v = get(m, path);
+        if (v === null || v === undefined) return NaN;
+        var num = Number(v);
+        return Number.isFinite(num) ? num : NaN;
+      }).filter(Number.isFinite);
+    }
+
+        function updateUni(){
+          var path = uniVar && uniVar.value;
+          if (!path) return;
+          var vals = valuesForPath(path);
+          if (!vals.length) return;
+          var min = Math.min.apply(null, vals);
+          var max = Math.max.apply(null, vals);
+          var sliderVal = uniBin ? Number(uniBin.value) : 20;
+          var width = (max - min) / Math.max(1, sliderVal);
+          if (binLabel) binLabel.textContent = isFinite(width) ? ("width ≈ " + width.toFixed(2)) : "";
+          renderHistogram(vals, path, width);
+        }
+        uniVar && uniVar.addEventListener("change", updateUni);
+        uniBin && uniBin.addEventListener("input", updateUni);
+
+        function updateBi(){
+
+          var xPath = biX && biX.value;
+          var yPath = biY && biY.value;
+          if (!xPath || !yPath) return;
+          var pts = members.map(function(m){
+            var xv = get(m, xPath);
+            var yv = get(m, yPath);
+            var x = parseFloat(xv);
+            var y = parseFloat(yv);
+            if (!isFinite(x)) x = 0;
+            if (!isFinite(y)) y = 0;
+            return { x:x, y:y, _label: namePartyState(m) };
+          });
+          
+          if (!pts.length) return;
+          var xs = pts.map(function(p){ return Number(p.x); }).filter(Number.isFinite);
+          var ys = pts.map(function(p){ return Number(p.y); }).filter(Number.isFinite);
+          if (!xs.length || !ys.length) return;
+          var xmin = Math.min.apply(null, xs), xmax = Math.max.apply(null, xs);
+          var ymin = Math.min.apply(null, ys), ymax = Math.max.apply(null, ys);
+          var rangeX = xmax - xmin; if (!(rangeX > 0)) rangeX = 1;
+          var rangeY = ymax - ymin; if (!(rangeY > 0)) rangeY = 1;
+          var padX = Math.max(rangeX * 0.10, 0.05 * (Math.abs(xmax) || 1));
+          var padY = Math.max(rangeY * 0.10, 0.05 * (Math.abs(ymax) || 1));
+          var bounds = { xMin: xmin - padX, xMax: xmax + padX, yMin: ymin - padY, yMax: ymax + padY };
+          renderScatter(pts, xPath, yPath, bounds);
+        }
+        biX && biX.addEventListener("change", updateBi);
+        biY && biY.addEventListener("change", updateBi);
+
+        if (uniVar && uniVar.options.length) { uniVar.selectedIndex = 0; updateUni(); }
+        if (biX && biX.options.length) { biX.selectedIndex = 0; }
+        if (biY && biY.options.length) { biY.selectedIndex = Math.min(1, biY.options.length-1); updateBi(); }
+      }
+
+      function bootstrap(){
+        ensureChartJs().then(function(){
+          if (typeof fetchMemberAggregate === "function"){
+            fetchMemberAggregate().then(function(data){
+              var members = (data && Array.isArray(data.members)) ? data.members : [];
+              initWithMembers(members);
+            }).catch(function(err){ console.warn("[DataVisualizer] member_aggregate load error:", err); });
+          } else {
+            console.warn("[DataVisualizer] fetchMemberAggregate not found in scope.");
+          }
+        }).catch(function(e){ console.warn("[DataVisualizer] Chart.js failed to load:", e && e.message); });
+      }
+
+      // Wait for original DOM setup
+      if (document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", bootstrap);
+      } else {
+        setTimeout(bootstrap, 0);
+      }
+
+    } catch (e) {
+      console.warn("[DataVisualizer] init failed", e);
+    }
+  })();
+
 })();
+
+
+
