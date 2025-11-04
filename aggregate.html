@@ -89,6 +89,32 @@
 }
 </style>
 
+
+<style>
+.dv-stats-table {
+  table-layout: fixed;
+  width: 100%;
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1em;
+  text-align: center;
+  font-size: 0.9em;
+}
+.dv-stats-table th,
+.dv-stats-table td {
+  width: 25%;
+  border: 1px solid #e5e7eb;
+  padding: 6px 8px;
+}
+.dv-stats-table th {
+  background: #f7f7f7;
+  font-weight: 600;
+  text-align: left;
+}
+.dv-stats-table thead th:first-child { width: 40%; }
+.dv-stats-note { color: var(--muted); font-size: 0.85em; margin-top: 6px; }
+</style>
+
 </head>
 <body>
   <div class="wrap">
@@ -140,6 +166,24 @@
               </label>
             </div>
             <canvas id="dv-uni-chart" height="320"></canvas>
+<div id="uniStatsContainer">
+  <table class="dv-stats-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Democrats</th>
+        <th>Republicans</th>
+        <th>All</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><th>Average</th><td></td><td></td><td></td></tr>
+      <tr><th>Median</th><td></td><td></td><td></td></tr>
+      <tr><th>Standard Deviation</th><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+</div>
+
           </div>
 
           <div id="dv-bi" class="stack" hidden style="display:none;">
