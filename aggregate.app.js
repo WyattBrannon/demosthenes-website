@@ -1163,33 +1163,38 @@ var S = Math.max(140, Math.min(280, Math.floor((colW - 96) / 2)));
 
       // Numeric paths (top-level + nested up to depth 3)
       function numericPathsForMember(m){
-        var paths = [];
-        function addPath(prefix, obj, depth){
-          if (obj === null || obj === undefined) return;
-          if (typeof obj !== "object") return;
-          if (depth > 3) return;
-          if (Array.isArray(obj)) return;
-          Object.keys(obj).forEach(function(k){
-            var v = obj[k];
-            var path = prefix ? (prefix + "." + k) : k;
-            if (typeof v === "number" && Number.isFinite(v)) {
-              paths.push(path);
-            } else if (v && typeof v === "object") {
-              addPath(path, v, depth+1);
-            }
-          });
-        }
-        addPath("", m, 0);
-        paths = paths.filter(function(p){
-      return !/^identity(\.|$)/.test(p)
-          && !/^bioguide_id$/.test(p)
-          && !/^id$/.test(p)
-          && !/^fec\.top_contributors\./.test(p);
-    });
-        return Array.from(new Set(paths)).sort();
+  var paths = [];
+  function addPath(path, obj, depth) {
+    if (depth > 6) return;
+    for (var k in obj) {
+      var v = obj[k];
+      var newPath = path ? path + "." + k : k;
+      if (v === null || v === undefined) continue;
+      if (typeof v === "number" && Number.isFinite(v)) {
+        paths.push(newPath);
+      } else if (typeof v === "string") {
+        var vv = v.replace(/[,$\s]/g, "");
+        var n = Number(vv);
+        if (Number.isFinite(n)) { paths.push(newPath); continue; }
       }
+      if (v && typeof v === "object") addPath(newPath, v, depth + 1);
+    }
+  }
+  addPath("", m, 0);
+  // Normalize FEC totals: collapse any depth to final leaf key
+  paths = paths.map(function(p){
+    return p.replace(/^fec\.totals\.(?:[^.]+\.)+([^.]+)$/,"fec.totals.$1");
+  });
 
-      function unionNumericPaths(members){
+  paths = paths.filter(function(p){
+    return !/^identity(\.|$)/.test(p)
+        && !/^bioguide_id$/.test(p)
+        && !/^id$/.test(p)
+        && !/^fec\.top_contributors(\.|$)/.test(p);
+  });
+  return Array.from(new Set(paths)).sort();
+}
+function unionNumericPaths(members){
         var set = new Set();
         for (var i=0;i<members.length;i++){
           numericPathsForMember(members[i]).forEach(set.add, set);
