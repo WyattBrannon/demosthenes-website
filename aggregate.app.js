@@ -1,11 +1,54 @@
-
-// Global helper to ensure fetchMemberAggregate is ready before use
-async function waitForMemberAggregate() {
+// Ensure waitForMemberAggregate is always globally available
+window.waitForMemberAggregate = async function() {
   for (let i = 0; i < 20; i++) {
     if (typeof window.fetchMemberAggregate === "function") return window.fetchMemberAggregate;
     await new Promise(r => setTimeout(r, 100));
   }
   throw new Error("[DataVisualizer] fetchMemberAggregate not available after waiting");
+};
+
+
+// === Data Visualizer: Univariate stats table helpers ===
+function dv_getPath(obj, path) {
+  try { return path.split('.').reduce((o,k)=> (o==null ? undefined : o[k]), obj); } catch { return undefined; }
+}
+function dv_num(v) {
+  if (v == null || v === "") return NaN;
+  if (typeof v === "string") v = v.replace(/[,$\s]/g, "");
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+function dv_computeStats(values) {
+  if (!values.length) return { mean: 0, median: 0, sd: 0 };
+  const mean = values.reduce((a,b)=>a+b,0) / values.length;
+  const sorted = values.slice().sort((a,b)=>a-b);
+  const mid = Math.floor(sorted.length/2);
+  const median = (sorted.length % 2) ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+  const sd = Math.sqrt(sorted.reduce((s,v)=> s + Math.pow(v-mean,2), 0) / values.length);
+  return { mean, median, sd };
+}
+function updateUnivariateTable(members, path) {
+  const rows = document.querySelectorAll("#uniStatsContainer tbody tr");
+  if (!rows.length) return;
+  const dems = members.filter(m => (m.identity && (m.identity.party === "D" || m.identity.party === "I")));
+  const reps = members.filter(m => (m.identity && m.identity.party === "R"));
+  const valsAll = members.map(m => dv_num(dv_getPath(m, path))).filter(Number.isFinite);
+  const valsD = dems.map(m => dv_num(dv_getPath(m, path))).filter(Number.isFinite);
+  const valsR = reps.map(m => dv_num(dv_getPath(m, path))).filter(Number.isFinite);
+  const allStats = dv_computeStats(valsAll);
+  const dStats = dv_computeStats(valsD);
+  const rStats = dv_computeStats(valsR);
+  function setRow(row, key) {
+    const cells = row.querySelectorAll("td");
+    if (cells.length >= 3) {
+      cells[0].textContent = dStats[key].toFixed(2);
+      cells[1].textContent = rStats[key].toFixed(2);
+      cells[2].textContent = allStats[key].toFixed(2);
+    }
+  }
+  setRow(rows[0], "mean");
+  setRow(rows[1], "median");
+  setRow(rows[2], "sd");
 }
 
 // aggregate.app.js — clean rebuild
@@ -1269,6 +1312,7 @@ var S = Math.max(140, Math.min(280, Math.floor((colW - 96) / 2)));
           var sliderVal = uniBin ? Number(uniBin.value) : 20;
           var width = (max - min) / Math.max(1, sliderVal);
           if (binLabel) binLabel.textContent = isFinite(width) ? ("width ≈ " + width.toFixed(2)) : "";
+          updateUnivariateTable(members, path);
           renderHistogram(vals, path, width);
         }
         uniVar && uniVar.addEventListener("change", updateUni);
@@ -1297,8 +1341,8 @@ var S = Math.max(140, Math.min(280, Math.floor((colW - 96) / 2)));
           var ymin = Math.min.apply(null, ys), ymax = Math.max.apply(null, ys);
           var rangeX = xmax - xmin; if (!(rangeX > 0)) rangeX = 1;
           var rangeY = ymax - ymin; if (!(rangeY > 0)) rangeY = 1;
-          var padX = Math.max(rangeX * 0.05, 0.05 * (Math.abs(xmax) || 1));
-          var padY = Math.max(rangeY * 0.05, 0.05 * (Math.abs(ymax) || 1));
+          var padX = Math.max(rangeX * 0.10, 0.05 * (Math.abs(xmax) || 1));
+          var padY = Math.max(rangeY * 0.10, 0.05 * (Math.abs(ymax) || 1));
           var bounds = { xMin: xmin - padX, xMax: xmax + padX, yMin: ymin - padY, yMax: ymax + padY };
           renderScatter(pts, xPath, yPath, bounds);
         }
