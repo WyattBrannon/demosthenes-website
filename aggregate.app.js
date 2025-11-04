@@ -1,3 +1,13 @@
+
+// Global helper to ensure fetchMemberAggregate is ready before use
+async function waitForMemberAggregate() {
+  for (let i = 0; i < 20; i++) {
+    if (typeof window.fetchMemberAggregate === "function") return window.fetchMemberAggregate;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  throw new Error("[DataVisualizer] fetchMemberAggregate not available after waiting");
+}
+
 // aggregate.app.js — clean rebuild
 (function(){
   "use strict";
@@ -529,6 +539,8 @@ st.textContent = `
     });
     return _memberAggPromise;
   }
+window.fetchMemberAggregate = fetchMemberAggregate;
+
 
   function ensureIdeologyScatter(){
     try{
@@ -620,7 +632,7 @@ st.textContent = `
 frag.appendChild(dot);
 }
 // Expose globally for Data Visualizer
-window.fetchMemberAggregate = fetchMemberAggregate;
+
 
 
 
@@ -1301,7 +1313,7 @@ var S = Math.max(140, Math.min(280, Math.floor((colW - 96) / 2)));
       function bootstrap(){
         ensureChartJs().then(function(){
           if (typeof fetchMemberAggregate === "function"){
-            fetchMemberAggregate().then(function(data){
+            waitForMemberAggregate().then(f => f()).then(function(data){
               var members = (data && Array.isArray(data.members)) ? data.members : [];
               initWithMembers(members);
             }).catch(function(err){ console.warn("[DataVisualizer] member_aggregate load error:", err); });
