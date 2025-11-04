@@ -1297,8 +1297,8 @@ var S = Math.max(140, Math.min(280, Math.floor((colW - 96) / 2)));
           var ymin = Math.min.apply(null, ys), ymax = Math.max.apply(null, ys);
           var rangeX = xmax - xmin; if (!(rangeX > 0)) rangeX = 1;
           var rangeY = ymax - ymin; if (!(rangeY > 0)) rangeY = 1;
-          var padX = Math.max(rangeX * 0.10, 0.05 * (Math.abs(xmax) || 1));
-          var padY = Math.max(rangeY * 0.10, 0.05 * (Math.abs(ymax) || 1));
+          var padX = Math.max(rangeX * 0.05, 0.05 * (Math.abs(xmax) || 1));
+          var padY = Math.max(rangeY * 0.05, 0.05 * (Math.abs(ymax) || 1));
           var bounds = { xMin: xmin - padX, xMax: xmax + padX, yMin: ymin - padY, yMax: ymax + padY };
           renderScatter(pts, xPath, yPath, bounds);
         }
