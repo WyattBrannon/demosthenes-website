@@ -1310,25 +1310,34 @@ function unionNumericPaths(members){
         function updateUni(){
           var path = uniVar && uniVar.value;
           if (!path) return;
-          var vals = valuesForPath(path);
+          var base = dvGetBaseMembers();
+          var fm = dvFilterMembersByControls("uni", base);
+          // compute values from filtered members
+          var vals = fm.map(function(m){
+            var v = get(m, path);
+            if (v === null || v === undefined) return NaN;
+            var num = Number(v);
+            return Number.isFinite(num) ? num : NaN;
+          }).filter(Number.isFinite);
           if (!vals.length) return;
           var min = Math.min.apply(null, vals);
           var max = Math.max.apply(null, vals);
           var sliderVal = uniBin ? Number(uniBin.value) : 20;
           var width = (max - min) / Math.max(1, sliderVal);
           if (binLabel) binLabel.textContent = isFinite(width) ? ("width ≈ " + width.toFixed(2)) : "";
-          updateUnivariateTable(members, path);
+          updateUnivariateTable(fm, path);
           renderHistogram(vals, path, width);
         }
         uniVar && uniVar.addEventListener("change", updateUni);
         uniBin && uniBin.addEventListener("input", updateUni);
 
         function updateBi(){
-
           var xPath = biX && biX.value;
           var yPath = biY && biY.value;
           if (!xPath || !yPath) return;
-          var pts = members.map(function(m){
+          var base = dvGetBaseMembers();
+          var fm = dvFilterMembersByControls("bi", base);
+          var pts = fm.map(function(m){
             var xv = get(m, xPath);
             var yv = get(m, yPath);
             var x = parseFloat(xv);
@@ -1337,7 +1346,6 @@ function unionNumericPaths(members){
             if (!isFinite(y)) y = 0;
             return { x:x, y:y, _label: namePartyState(m) };
           });
-          
           if (!pts.length) return;
           var xs = pts.map(function(p){ return Number(p.x); }).filter(Number.isFinite);
           var ys = pts.map(function(p){ return Number(p.y); }).filter(Number.isFinite);
@@ -1388,3 +1396,267 @@ function unionNumericPaths(members){
 
 
 
+
+
+// === DataVisualizer Filters for Univariate and Bivariate ===
+function applyFilters(members, chamberSel, partySel){
+  let filtered = [...members];
+  if(chamberSel && chamberSel !== "all"){
+    filtered = filtered.filter(m => (m.chamber || "").toLowerCase() === chamberSel);
+  }
+  if(partySel && partySel !== "all"){
+    if(partySel === "dem") filtered = filtered.filter(m => ["D","I"].includes(m.party));
+    else if(partySel === "rep") filtered = filtered.filter(m => m.party === "R");
+  }
+  return filtered;
+}
+
+function createFilterControls(prefix, onChange){
+  const wrap = document.createElement("div");
+  wrap.className = "dv-filter-row";
+  wrap.innerHTML = `
+    <label>Chamber:</label>
+    <select id="${prefix}ChamberFilter">
+      <option value="all" selected>All</option>
+      <option value="house">House</option>
+      <option value="senate">Senate</option>
+    </select>
+    <label>Party:</label>
+    <select id="${prefix}PartyFilter">
+      <option value="all" selected>All</option>
+      <option value="dem">Democrats</option>
+      <option value="rep">Republicans</option>
+    </select>
+  `;
+  // ✅ Attach listeners to immediately re-render
+  wrap.querySelectorAll("select").forEach(sel => {
+    sel.addEventListener("change", () => {
+      if (prefix === "uni" && typeof updateUni === "function") updateUni();
+      if (prefix === "bi" && typeof updateBi === "function") updateBi();
+    });
+  });
+  return wrap;
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  const uniChart = document.getElementById("dv-uni-chart");
+  if(uniChart && !document.getElementById("uniChamberFilter")){
+    uniChart.insertAdjacentElement("afterend", createFilterControls("uni", () => updateUni()));
+  }
+  const biChart = document.getElementById("dv-bi-chart");
+  if(biChart && !document.getElementById("biChamberFilter")){
+    biChart.insertAdjacentElement("afterend", createFilterControls("bi", () => updateBi()));
+  }
+});
+
+const _origUpdateUni = typeof updateUni === "function" ? updateUni : null;
+const _origUpdateBi = typeof updateBi === "function" ? updateBi : null;
+
+updateUni = function(){
+  const chamberSel = (document.getElementById("uniChamberFilter")||{}).value || "all";
+  const partySel = (document.getElementById("uniPartyFilter")||{}).value || "all";
+  if(typeof fetchMemberAggregate === "function"){
+    const members = fetchMemberAggregate() || [];
+    const filtered = applyFilters(members, chamberSel, partySel);
+    window._uniFilteredMembers = filtered;
+  }
+  if(_origUpdateUni) _origUpdateUni();
+};
+
+updateBi = function(){
+  const chamberSel = (document.getElementById("biChamberFilter")||{}).value || "all";
+  const partySel = (document.getElementById("biPartyFilter")||{}).value || "all";
+  if(typeof fetchMemberAggregate === "function"){
+    const members = fetchMemberAggregate() || [];
+    const filtered = applyFilters(members, chamberSel, partySel);
+    window._biFilteredMembers = filtered;
+  }
+  if(_origUpdateBi) _origUpdateBi();
+};
+// === End Filters ===
+
+
+// === DataVisualizer Filters: ensure charts use filtered members by overriding fetch during update ===
+function _dvWrapFetchWithFilter(chamberSel, partySel) {
+  const original = window.fetchMemberAggregate;
+  window.fetchMemberAggregate = function() {
+    const res = original();
+    // Handle promise or sync result
+    if (res && typeof res.then === 'function') {
+      return res.then(data => {
+        const members = (data && data.members) ? data.members : [];
+        const filtered = applyFilters(members, chamberSel, partySel);
+        return Object.assign({}, data, { members: filtered });
+      });
+    } else {
+      const data = res;
+      const members = (data && data.members) ? data.members
+                     : (Array.isArray(data) ? data : []);
+      const filtered = applyFilters(members, chamberSel, partySel);
+      if (data && data.members) {
+        return Object.assign({}, data, { members: filtered });
+      }
+      return { members: filtered };
+    }
+  };
+  // Return a restore function
+  return function _restore() { window.fetchMemberAggregate = original; };
+}
+
+// Replace our earlier shallow wrappers with ones that actually drive the data used by charts
+if (typeof _origUpdateUni === "function") {
+  updateUni = function(){
+    const chamberSel = (document.getElementById("uniChamberFilter")||{}).value || "all";
+    const partySel = (document.getElementById("uniPartyFilter")||{}).value || "all";
+    const restore = _dvWrapFetchWithFilter(chamberSel, partySel);
+    try { _origUpdateUni(); } finally { restore(); }
+  };
+}
+if (typeof _origUpdateBi === "function") {
+  updateBi = function(){
+    const chamberSel = (document.getElementById("biChamberFilter")||{}).value || "all";
+    const partySel = (document.getElementById("biPartyFilter")||{}).value || "all";
+    const restore = _dvWrapFetchWithFilter(chamberSel, partySel);
+    try { _origUpdateBi(); } finally { restore(); }
+  };
+}
+// Trigger initial render to respect default filters
+window.addEventListener("load", () => { try { if (typeof updateUni === 'function') updateUni(); } catch(e){} try { if (typeof updateBi === 'function') updateBi(); } catch(e){} });
+// === End DataVisualizer Filters override ===
+
+
+// === Filtering helpers for DV (identity-based) ===
+function dvFilterMembersByControls(prefix, baseMembers){
+  var chamberSelEl = document.getElementById(prefix + "ChamberFilter");
+  var partySelEl = document.getElementById(prefix + "PartyFilter");
+  var chamberSel = chamberSelEl ? chamberSelEl.value : "all";
+  var partySel = partySelEl ? partySelEl.value : "all";
+  var arr = Array.isArray(baseMembers) ? baseMembers.slice() : [];
+  // Chamber: infer by identity.district (House has a district string, Senate is null/empty)
+  if (chamberSel !== "all") {
+    arr = arr.filter(function(m){
+      var dist = m && m.identity ? m.identity.district : null;
+      var isHouse = dist != null && String(dist).trim() !== "";
+      return chamberSel === "house" ? isHouse : !isHouse;
+    });
+  }
+  // Party: identity.party
+  if (partySel !== "all") {
+    arr = arr.filter(function(m){
+      var p = m && m.identity ? m.identity.party : null;
+      if (partySel === "dem") return p === "D" || p === "I";
+      if (partySel === "rep") return p === "R";
+      return true;
+    });
+  }
+  return arr;
+}
+
+// === DV global cache of members to ensure filters drive charts ===
+(function(){ try {
+  if (!window.__DV_MEMBERS) {
+    if (typeof waitForMemberAggregate === "function") {
+      try { waitForMemberAggregate().then(f => f()).then(function(data){ 
+        var arr = (data && Array.isArray(data.members)) ? data.members : (Array.isArray(data) ? data : []);
+        if (arr && arr.length) window.__DV_MEMBERS = arr;
+      }).catch(function(){}); } catch(e){}
+    }
+  }
+} catch(e){} })();
+
+function dvGetBaseMembers(){
+  if (Array.isArray(window.__DV_MEMBERS)) return window.__DV_MEMBERS;
+  try { if (typeof members !== "undefined") return members; } catch(e){}
+  return [];
+}
+// === end DV cache ===
+
+
+// === Robust re-render wiring for DV filters ===
+(function(){
+  function applyFiltersArr(arr, chamberSel, partySel){
+    var out = Array.isArray(arr) ? arr.slice() : [];
+    if (chamberSel && chamberSel !== "all") {
+      out = out.filter(function(m){
+        var dist = m && m.identity ? m.identity.district : null;
+        var isHouse = dist != null && String(dist).trim() !== "";
+        return chamberSel === "house" ? isHouse : !isHouse;
+      });
+    }
+    if (partySel && partySel !== "all") {
+      out = out.filter(function(m){
+        var p = m && m.identity ? m.identity.party : null;
+        if (partySel === "dem") return p === "D" || p === "I";
+        if (partySel === "rep") return p === "R";
+        return true;
+      });
+    }
+    return out;
+  }
+
+  function _dvWrapFetchWithFilter(chamberSel, partySel){
+    var original = window.fetchMemberAggregate;
+    if (typeof original !== "function") {
+      return function(){}; // nothing to wrap
+    }
+    window.fetchMemberAggregate = function(){
+      var res = original();
+      if (res && typeof res.then === "function"){
+        return res.then(function(data){
+          var members = (data && Array.isArray(data.members)) ? data.members : (Array.isArray(data) ? data : []);
+          var filtered = applyFiltersArr(members, chamberSel, partySel);
+          return data && data.members ? Object.assign({}, data, { members: filtered }) : { members: filtered };
+        });
+      } else {
+        var data = res;
+        var members = (data && Array.isArray(data.members)) ? data.members : (Array.isArray(data) ? data : []);
+        var filtered = applyFiltersArr(members, chamberSel, partySel);
+        return data && data.members ? Object.assign({}, data, { members: filtered }) : { members: filtered };
+      }
+    };
+    return function restore(){ window.fetchMemberAggregate = original; };
+  }
+
+  function dvTrigger(prefix){
+    var chamberSel = (document.getElementById(prefix+"ChamberFilter")||{}).value || "all";
+    var partySel = (document.getElementById(prefix+"PartyFilter")||{}).value || "all";
+    var restore = _dvWrapFetchWithFilter(chamberSel, partySel);
+    try {
+      if (prefix === "uni"){
+        var uniVarSel = document.getElementById("dv-uni-var");
+        if (uniVarSel) {
+          uniVarSel.dispatchEvent(new Event("change", { bubbles: true }));
+        } else if (typeof updateUni === "function") {
+          updateUni();
+        }
+      } else {
+        var biX = document.getElementById("dv-bi-x");
+        var biY = document.getElementById("dv-bi-y");
+        if (biX) biX.dispatchEvent(new Event("change", { bubbles: true }));
+        else if (biY) biY.dispatchEvent(new Event("change", { bubbles: true }));
+        else if (typeof updateBi === "function") updateBi();
+      }
+    } finally {
+      restore();
+    }
+  }
+
+  function bindNow(){
+    var uniC = document.getElementById("uniChamberFilter");
+    var uniP = document.getElementById("uniPartyFilter");
+    var biC = document.getElementById("biChamberFilter");
+    var biP = document.getElementById("biPartyFilter");
+    if (uniC && !uniC._dvBound) { uniC.addEventListener("change", function(){ dvTrigger("uni"); }); uniC._dvBound = true; }
+    if (uniP && !uniP._dvBound) { uniP.addEventListener("change", function(){ dvTrigger("uni"); }); uniP._dvBound = true; }
+    if (biC && !biC._dvBound) { biC.addEventListener("change", function(){ dvTrigger("bi"); }); biC._dvBound = true; }
+    if (biP && !biP._dvBound) { biP.addEventListener("change", function(){ dvTrigger("bi"); }); biP._dvBound = true; }
+  }
+
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(bindNow, 0);
+  } else {
+    document.addEventListener("DOMContentLoaded", function(){ setTimeout(bindNow, 0); });
+  }
+  window.addEventListener("load", bindNow);
+})();
+// === End robust re-render wiring ===
